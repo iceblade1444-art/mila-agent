@@ -1,9 +1,11 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models.dart';
 import '../integrations/integration_service.dart';
+import '../soul/soul_service.dart';
 import '../storage/stores.dart';
 import 'llm_provider.dart';
 
@@ -65,8 +67,12 @@ class LlmService {
     final tasks = _ref.read(tasksProvider);
     final now = DateTime.now();
 
+    final soul = _ref.read(soulServiceProvider).build(settings, profile);
     final buffer = StringBuffer()
-      ..writeln('You are MILA — the user\'s personal AI assistant.');
+      ..writeln(soul)
+      ..writeln(
+        'Treat the SOUL document above as your stable identity and follow it in every response.',
+      );
     buffer.writeln(
       'CURRENT LOCAL TIME: ${now.toIso8601String()} (use this as the reference for relative dates such as "tomorrow"; never guess the current date).',
     );
@@ -104,7 +110,9 @@ BEHAVIOR
         buffer.writeln('- ${m.text}');
       }
     }
-    final openTasks = tasks.where((task) => !task.done && task.enabled).take(30);
+    final openTasks = tasks
+        .where((task) => !task.done && task.enabled)
+        .take(30);
     if (openTasks.isNotEmpty) {
       buffer.writeln('\nCURRENT OPEN TASKS (local to the user\'s device)');
       for (final task in openTasks) {
@@ -134,7 +142,7 @@ SPOKEN CONVERSATION RULES — you are talking OUT LOUD in a live voice call
           '\nRECENT CONVERSATION WITH THE USER (for continuity — do not repeat it back):',
         );
         for (final m in recent.reversed.take(12).toList().reversed) {
-          final who = m.role == ChatRole.user ? 'User' : 'MILA';
+          final who = m.role == ChatRole.user ? 'User' : settings.assistantName;
           final line = m.text.length > 220
               ? '${m.text.substring(0, 220)}…'
               : m.text;
@@ -176,11 +184,22 @@ block itself in your prose.''');
 
   /// Sends [text] and streams the reply into the chat store.
   /// Returns the assistant message id, or null on failure.
-  Future<String?> send(String text, {bool viaVoice = false}) async {
+  Future<String?> send(
+    String text, {
+    bool viaVoice = false,
+    List<ChatAttachment> attachments = const [],
+  }) async {
     final chat = _ref.read(chatProvider.notifier);
     final busy = _ref.read(chatBusyProvider.notifier);
 
-    chat.add(ChatMessage(role: ChatRole.user, text: text, viaVoice: viaVoice));
+    chat.add(
+      ChatMessage(
+        role: ChatRole.user,
+        text: text,
+        attachments: attachments,
+        viaVoice: viaVoice,
+      ),
+    );
 
     final assistant = ChatMessage(role: ChatRole.assistant, text: '');
     chat.add(assistant);
@@ -188,21 +207,47 @@ block itself in your prose.''');
 
     try {
       final provider = await _activeProvider();
-      final history = _ref
+      final storedHistory = _ref
           .read(chatProvider)
-          .where((m) => m.text.isNotEmpty)
+          .where((m) => m.text.isNotEmpty || m.attachments.isNotEmpty)
           .toList()
           .reversed
           .take(24)
           .toList()
           .reversed
-          .map(
-            (m) => LlmMessage(
-              role: m.role == ChatRole.user ? 'user' : 'assistant',
-              content: m.text,
-            ),
-          )
           .toList();
+      final history = <LlmMessage>[];
+      for (var index = 0; index < storedHistory.length; index++) {
+        final message = storedHistory[index];
+        final inline = <LlmAttachment>[];
+        // Re-sending every historical image can cross Gemini's inline request
+        // limit very quickly. The current turn gets its files; older turns are
+        // represented by their text and the model's prior answer.
+        final currentAttachments = index == storedHistory.length - 1
+            ? message.attachments
+            : const <ChatAttachment>[];
+        for (final attachment in currentAttachments) {
+          final file = File(attachment.path);
+          if (!await file.exists()) continue;
+          final size = await file.length();
+          if (size > 15 * 1024 * 1024) continue;
+          inline.add(
+            LlmAttachment(
+              bytes: await file.readAsBytes(),
+              mimeType: attachment.mimeType,
+            ),
+          );
+        }
+        history.add(
+          LlmMessage(
+            role: message.role == ChatRole.user ? 'user' : 'assistant',
+            content: message.text.isEmpty
+                ? 'Please inspect the attached content.'
+                : message.text,
+            attachments: inline,
+          ),
+        );
+      }
 
       final full = StringBuffer();
       await for (final delta in provider.streamChat(
@@ -341,12 +386,14 @@ block itself in your prose.''');
     final minutes = action.payload['durationMinutes'];
     final durationMinutes = minutes is num ? minutes.toInt() : 60;
     final safeDurationMinutes = durationMinutes.clamp(5, 480).toInt();
-    final calendar = await _ref.read(integrationServiceProvider).addCalendarEvent(
-      title: action.title,
-      description: action.subtitle,
-      start: start,
-      duration: Duration(minutes: safeDurationMinutes),
-    );
+    final calendar = await _ref
+        .read(integrationServiceProvider)
+        .addCalendarEvent(
+          title: action.title,
+          description: action.subtitle,
+          start: start,
+          duration: Duration(minutes: safeDurationMinutes),
+        );
     return ActionExecutionResult(
       calendar.ok,
       calendar.ok

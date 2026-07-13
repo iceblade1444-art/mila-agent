@@ -4,6 +4,43 @@ const _uuid = Uuid();
 
 enum ChatRole { user, assistant }
 
+enum ChatAttachmentType { image, file }
+
+class ChatAttachment {
+  ChatAttachment({
+    String? id,
+    required this.name,
+    required this.path,
+    required this.mimeType,
+    required this.type,
+  }) : id = id ?? _uuid.v4();
+
+  final String id;
+  final String name;
+  final String path;
+  final String mimeType;
+  final ChatAttachmentType type;
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'path': path,
+    'mimeType': mimeType,
+    'type': type.name,
+  };
+
+  factory ChatAttachment.fromJson(Map<String, dynamic> json) => ChatAttachment(
+    id: json['id'] as String?,
+    name: json['name'] as String? ?? 'Attachment',
+    path: json['path'] as String? ?? '',
+    mimeType: json['mimeType'] as String? ?? 'application/octet-stream',
+    type: ChatAttachmentType.values.firstWhere(
+      (type) => type.name == json['type'],
+      orElse: () => ChatAttachmentType.file,
+    ),
+  );
+}
+
 enum ActionType {
   createTask,
   draftMessage,
@@ -76,16 +113,19 @@ class ChatMessage {
     required this.text,
     DateTime? createdAt,
     List<MilaAction>? actions,
+    List<ChatAttachment>? attachments,
     this.viaVoice = false,
   }) : id = id ?? _uuid.v4(),
        createdAt = createdAt ?? DateTime.now(),
-       actions = actions ?? [];
+       actions = actions ?? [],
+       attachments = attachments ?? [];
 
   final String id;
   final ChatRole role;
   String text;
   final DateTime createdAt;
   final List<MilaAction> actions;
+  final List<ChatAttachment> attachments;
   final bool viaVoice;
 
   Map<String, dynamic> toJson() => {
@@ -94,6 +134,9 @@ class ChatMessage {
     'text': text,
     'createdAt': createdAt.toIso8601String(),
     'actions': actions.map((a) => a.toJson()).toList(),
+    'attachments': attachments
+        .map((attachment) => attachment.toJson())
+        .toList(),
     'viaVoice': viaVoice,
   };
 
@@ -104,6 +147,13 @@ class ChatMessage {
     createdAt: DateTime.tryParse(json['createdAt'] as String? ?? ''),
     actions: ((json['actions'] as List?) ?? [])
         .map((a) => MilaAction.fromJson((a as Map).cast<String, dynamic>()))
+        .toList(),
+    attachments: ((json['attachments'] as List?) ?? [])
+        .map(
+          (attachment) => ChatAttachment.fromJson(
+            (attachment as Map).cast<String, dynamic>(),
+          ),
+        )
         .toList(),
     viaVoice: json['viaVoice'] as bool? ?? false,
   );
@@ -215,6 +265,52 @@ enum LlmProviderKind { openaiAccount, openai, gemini, claude }
 
 enum AssistantVoiceGender { female, male }
 
+class AssistantPersonality {
+  const AssistantPersonality({
+    required this.id,
+    required this.title,
+    required this.subtitle,
+    required this.prompt,
+  });
+
+  final String id;
+  final String title;
+  final String subtitle;
+  final String prompt;
+}
+
+const assistantPersonalities = <AssistantPersonality>[
+  AssistantPersonality(
+    id: 'warm',
+    title: 'Warm & friendly',
+    subtitle: 'Attentive, caring and natural',
+    prompt:
+        'Warm, attentive and friendly. Speak naturally, show empathy and gentle humor, while staying useful, honest and respectful.',
+  ),
+  AssistantPersonality(
+    id: 'professional',
+    title: 'Professional & brief',
+    subtitle: 'Focused, calm and efficient',
+    prompt:
+        'Professional, calm and concise. Prioritize accuracy, clear structure and practical next steps. Avoid unnecessary small talk.',
+  ),
+  AssistantPersonality(
+    id: 'playful',
+    title: 'Playful & energetic',
+    subtitle: 'Lively, curious and encouraging',
+    prompt:
+        'Lively, curious and encouraging. Use light humor and energetic phrasing without becoming childish, distracting or imprecise.',
+  ),
+];
+
+const defaultAssistantPersonalityId = 'warm';
+
+AssistantPersonality assistantPersonalityById(String id) =>
+    assistantPersonalities.firstWhere(
+      (personality) => personality.id == id,
+      orElse: () => assistantPersonalities.first,
+    );
+
 const femaleVoiceName = 'Aoede';
 const maleVoiceName = 'Puck';
 
@@ -242,8 +338,10 @@ class AppSettings {
     this.anthropicModel = 'claude-sonnet-5',
     this.geminiLiveModel = 'gemini-3.1-flash-live-preview',
     this.voiceName = femaleVoiceName,
+    this.assistantName = 'MILA',
+    this.personalityId = defaultAssistantPersonalityId,
     this.personality =
-        'An elegant, warm and slightly playful assistant: intelligent, attentive and professional. Pleasant, natural tone, always respectful, useful and business-focused; never overly emotional or childish.',
+        'Warm, attentive and friendly. Speak naturally, show empathy and gentle humor, while staying useful, honest and respectful.',
     this.language = 'Русский',
     this.conciseSummaries = true,
     this.autoMemory = true,
@@ -259,6 +357,8 @@ class AppSettings {
   final String anthropicModel;
   final String geminiLiveModel;
   final String voiceName;
+  final String assistantName;
+  final String personalityId;
   final String personality;
   final String language;
   final bool conciseSummaries;
@@ -275,6 +375,8 @@ class AppSettings {
     String? anthropicModel,
     String? geminiLiveModel,
     String? voiceName,
+    String? assistantName,
+    String? personalityId,
     String? personality,
     String? language,
     bool? conciseSummaries,
@@ -290,6 +392,8 @@ class AppSettings {
     anthropicModel: anthropicModel ?? this.anthropicModel,
     geminiLiveModel: geminiLiveModel ?? this.geminiLiveModel,
     voiceName: voiceName ?? this.voiceName,
+    assistantName: assistantName ?? this.assistantName,
+    personalityId: personalityId ?? this.personalityId,
     personality: personality ?? this.personality,
     language: language ?? this.language,
     conciseSummaries: conciseSummaries ?? this.conciseSummaries,
@@ -299,7 +403,7 @@ class AppSettings {
   );
 
   Map<String, dynamic> toJson() => {
-    'v': 9,
+    'v': 10,
     'onboarded': onboarded,
     'permissionsDone': permissionsDone,
     'provider': provider.name,
@@ -308,6 +412,8 @@ class AppSettings {
     'anthropicModel': anthropicModel,
     'geminiLiveModel': geminiLiveModel,
     'voiceName': voiceName,
+    'assistantName': assistantName,
+    'personalityId': personalityId,
     'personality': personality,
     'language': language,
     'conciseSummaries': conciseSummaries,
@@ -370,6 +476,9 @@ class AppSettings {
       anthropicModel: json['anthropicModel'] as String? ?? 'claude-sonnet-5',
       geminiLiveModel: liveModel,
       voiceName: json['voiceName'] as String? ?? femaleVoiceName,
+      assistantName: json['assistantName'] as String? ?? 'MILA',
+      personalityId:
+          json['personalityId'] as String? ?? defaultAssistantPersonalityId,
       personality: personality,
       language: language,
       conciseSummaries: json['conciseSummaries'] as bool? ?? true,

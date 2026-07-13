@@ -5,6 +5,7 @@ import '../../core/config/app_config.dart';
 import '../../core/theme/mila_theme.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models.dart';
+import '../../services/soul/soul_service.dart';
 import '../../services/storage/stores.dart';
 import '../../services/voice/voice_controller.dart';
 
@@ -260,13 +261,17 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
                                 settings.voiceName,
                               ) ==
                               gender,
-                          onTap: () => ref
-                              .read(settingsProvider.notifier)
-                              .update(
-                                (s) => s.copyWith(
-                                  voiceName: voiceNameForGender(gender),
-                                ),
-                              ),
+                          onTap: () {
+                            final updated = settings.copyWith(
+                              voiceName: voiceNameForGender(gender),
+                            );
+                            ref
+                                .read(settingsProvider.notifier)
+                                .update((_) => updated);
+                            ref
+                                .read(soulServiceProvider)
+                                .save(updated, ref.read(profileProvider));
+                          },
                         ),
                     ],
                   ),

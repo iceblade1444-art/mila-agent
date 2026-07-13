@@ -6,6 +6,7 @@ import '../../core/theme/mila_theme.dart';
 import '../../core/widgets/common.dart';
 import '../../core/widgets/voice_orb.dart';
 import '../../data/models.dart';
+import '../../services/soul/soul_service.dart';
 import '../../services/storage/stores.dart';
 
 /// A short first-run introduction shown before account sign-in.
@@ -21,8 +22,10 @@ class _AssistantSetupScreenState extends ConsumerState<AssistantSetupScreen> {
   static const _languages = ['Русский', 'English', 'O\'zbekcha'];
 
   final _addressName = TextEditingController();
+  final _assistantName = TextEditingController(text: 'MILA');
   final _formKey = GlobalKey<FormState>();
   AssistantVoiceGender _voiceGender = AssistantVoiceGender.female;
+  String _personalityId = defaultAssistantPersonalityId;
   String _language = 'Русский';
 
   @override
@@ -30,7 +33,9 @@ class _AssistantSetupScreenState extends ConsumerState<AssistantSetupScreen> {
     super.initState();
     final settings = ref.read(settingsProvider);
     _addressName.text = ref.read(profileProvider).name;
+    _assistantName.text = settings.assistantName;
     _voiceGender = assistantVoiceGenderFromName(settings.voiceName);
+    _personalityId = settings.personalityId;
     if (_languages.contains(settings.language)) {
       _language = settings.language;
     }
@@ -39,6 +44,7 @@ class _AssistantSetupScreenState extends ConsumerState<AssistantSetupScreen> {
   @override
   void dispose() {
     _addressName.dispose();
+    _assistantName.dispose();
     super.dispose();
   }
 
@@ -46,24 +52,25 @@ class _AssistantSetupScreenState extends ConsumerState<AssistantSetupScreen> {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
     final profile = ref.read(profileProvider);
-    ref
-        .read(profileProvider.notifier)
-        .save(
-          UserProfile(
-            name: _addressName.text.trim(),
-            email: profile.email,
-            signedIn: profile.signedIn,
-          ),
+    final updatedProfile = UserProfile(
+      name: _addressName.text.trim(),
+      email: profile.email,
+      signedIn: profile.signedIn,
+    );
+    final personality = assistantPersonalityById(_personalityId);
+    final updatedSettings = ref
+        .read(settingsProvider)
+        .copyWith(
+          assistantName: _assistantName.text.trim(),
+          voiceName: voiceNameForGender(_voiceGender),
+          personalityId: personality.id,
+          personality: personality.prompt,
+          language: _language,
+          assistantSetupDone: true,
         );
-    ref
-        .read(settingsProvider.notifier)
-        .update(
-          (settings) => settings.copyWith(
-            voiceName: voiceNameForGender(_voiceGender),
-            language: _language,
-            assistantSetupDone: true,
-          ),
-        );
+    ref.read(profileProvider.notifier).save(updatedProfile);
+    ref.read(settingsProvider.notifier).update((_) => updatedSettings);
+    ref.read(soulServiceProvider).save(updatedSettings, updatedProfile);
 
     if (!profile.signedIn) {
       context.go('/signin');
@@ -101,7 +108,7 @@ class _AssistantSetupScreenState extends ConsumerState<AssistantSetupScreen> {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        'I\'m MILA. What should I call you?',
+                        'Create an assistant that feels like yours.',
                         textAlign: TextAlign.center,
                         style: text.bodyMedium?.copyWith(
                           color: MilaColors.textSecondary,
@@ -123,6 +130,21 @@ class _AssistantSetupScreenState extends ConsumerState<AssistantSetupScreen> {
                             ? 'Please enter your name'
                             : null,
                         onFieldSubmitted: (_) => _finish(),
+                      ),
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: _assistantName,
+                        keyboardType: TextInputType.name,
+                        textCapitalization: TextCapitalization.words,
+                        textInputAction: TextInputAction.next,
+                        decoration: const InputDecoration(
+                          labelText: 'Assistant name',
+                          hintText: 'For example: MILA, Nova, Atlas',
+                          prefixIcon: Icon(Icons.auto_awesome_rounded),
+                        ),
+                        validator: (value) => (value ?? '').trim().isEmpty
+                            ? 'Please choose an assistant name'
+                            : null,
                       ),
                       const SizedBox(height: 24),
                       Text(
@@ -162,6 +184,21 @@ class _AssistantSetupScreenState extends ConsumerState<AssistantSetupScreen> {
                       ),
                       const SizedBox(height: 24),
                       Text(
+                        'PERSONALITY',
+                        style: text.labelSmall?.copyWith(letterSpacing: 1.5),
+                      ),
+                      const SizedBox(height: 10),
+                      for (final personality in assistantPersonalities) ...[
+                        _PersonalityCard(
+                          personality: personality,
+                          selected: _personalityId == personality.id,
+                          onTap: () =>
+                              setState(() => _personalityId = personality.id),
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                      const SizedBox(height: 24),
+                      Text(
                         'PRIMARY LANGUAGE',
                         style: text.labelSmall?.copyWith(letterSpacing: 1.5),
                       ),
@@ -194,6 +231,53 @@ class _AssistantSetupScreenState extends ConsumerState<AssistantSetupScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _PersonalityCard extends StatelessWidget {
+  const _PersonalityCard({
+    required this.personality,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final AssistantPersonality personality;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassCard(
+      onTap: onTap,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      borderColor: selected ? MilaColors.purple : MilaColors.cardBorder,
+      color: selected ? MilaColors.purple.withValues(alpha: 0.09) : null,
+      child: Row(
+        children: [
+          Icon(
+            selected ? Icons.check_circle_rounded : Icons.circle_outlined,
+            color: selected ? MilaColors.purple : MilaColors.textTertiary,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  personality.title,
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  personality.subtitle,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

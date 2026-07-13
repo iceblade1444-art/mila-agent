@@ -77,6 +77,7 @@ class VoiceController extends StateNotifier<VoiceState> {
   final Queue<Uint8List> _playQueue = Queue();
   bool _draining = false;
   int _feedGeneration = 0; // bumped on interruption to drop stale audio
+  bool _manualInterruption = false;
 
   String _userText = '';
   String _assistantText = '';
@@ -99,6 +100,7 @@ class VoiceController extends StateNotifier<VoiceState> {
       final credentials = await _liveCredentials();
       await _openPlayer();
       final settings = _ref.read(settingsProvider);
+      final assistantName = settings.assistantName;
       final ready = Completer<void>();
       final client = GeminiLiveClient(
         apiKey: credentials.apiKey,
@@ -106,7 +108,7 @@ class VoiceController extends StateNotifier<VoiceState> {
         model: settings.geminiLiveModel,
         voiceName: voiceName,
         systemInstruction:
-            'You are MILA. Speak only the requested short voice sample.',
+            'You are $assistantName. Speak only the requested short voice sample.',
       );
       _client = client;
       client
@@ -141,7 +143,7 @@ class VoiceController extends StateNotifier<VoiceState> {
       await ready.future.timeout(const Duration(seconds: 12));
       state = const VoiceState(phase: VoicePhase.speaking);
       client.sendText(
-        'Say exactly this short sample in the user\'s primary language: "Hello, I am MILA. Nice to meet you."',
+        'Say exactly this short sample in the user\'s primary language: "Hello, I am $assistantName. Nice to meet you."',
       );
     } on TimeoutException {
       _teardown();
@@ -236,6 +238,31 @@ class VoiceController extends StateNotifier<VoiceState> {
     if (state.phase == VoicePhase.error) state = const VoiceState();
   }
 
+  void sendVideoFrame(Uint8List jpeg) {
+    if (state.active) _client?.sendVideoFrame(jpeg);
+  }
+
+  /// Stops the current answer and returns to listening. The microphone is
+  /// intentionally gated while assistant audio is playing so the device
+  /// speaker can never become a new user turn.
+  Future<void> interrupt() async {
+    if (state.phase != VoicePhase.speaking) return;
+    _manualInterruption = true;
+    _feedGeneration++;
+    _playQueue.clear();
+    _commitTranscripts();
+    try {
+      await _player.clear();
+    } catch (_) {}
+    if (mounted && state.active) {
+      state = state.copyWith(
+        phase: VoicePhase.listening,
+        outputLevel: 0,
+        assistantPartial: '',
+      );
+    }
+  }
+
   Future<({String apiKey, String accessToken})> _liveCredentials() async {
     final secure = _ref.read(secureStoreProvider);
     final backendUrl = AppConfig.configuredBackendUrl(
@@ -276,12 +303,24 @@ class VoiceController extends StateNotifier<VoiceState> {
         encoder: AudioEncoder.pcm16bits,
         sampleRate: 16000,
         numChannels: 1,
+        echoCancel: true,
+        noiseSuppress: true,
+        androidConfig: AndroidRecordConfig(
+          audioSource: AndroidAudioSource.voiceCommunication,
+          speakerphone: true,
+          audioManagerMode: AudioManagerMode.modeInCommunication,
+        ),
       ),
     );
     _micSub = stream.listen((chunk) {
-      _client?.sendAudioChunk(chunk);
       final level = _rms16(chunk);
       if (level > 0.06) _lastMicVoice = DateTime.now();
+      // Full-duplex speaker audio is easily picked up by the microphone on
+      // phones without reliable hardware AEC. Keep listening visually, but
+      // only transmit while the assistant is not speaking.
+      if (state.phase != VoicePhase.speaking) {
+        _client?.sendAudioChunk(chunk);
+      }
       if (mounted && state.active) {
         state = state.copyWith(inputLevel: level);
       }
@@ -396,6 +435,7 @@ class VoiceController extends StateNotifier<VoiceState> {
 
   void _onAudio(Uint8List pcm) {
     _lastOutputChunk = DateTime.now();
+    if (_manualInterruption) return;
     if (state.active && state.phase != VoicePhase.speaking) {
       _commitUserIfNeeded();
       state = state.copyWith(phase: VoicePhase.speaking);
@@ -428,6 +468,7 @@ class VoiceController extends StateNotifier<VoiceState> {
   Future<void> _onInterrupted() async {
     // User barged in: flush queued audio immediately.
     _feedGeneration++;
+    _manualInterruption = false;
     _playQueue.clear();
     _commitTranscripts();
     try {
@@ -456,6 +497,7 @@ class VoiceController extends StateNotifier<VoiceState> {
   }
 
   void _onTurnComplete() {
+    _manualInterruption = false;
     _commitTranscripts();
   }
 
@@ -530,6 +572,7 @@ class VoiceController extends StateNotifier<VoiceState> {
     _ticker = null;
     _feedGeneration++;
     _resumeInProgress = false;
+    _manualInterruption = false;
     _sessionResumptionHandle = '';
     _playQueue.clear();
     _micSub?.cancel();

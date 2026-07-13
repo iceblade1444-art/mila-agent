@@ -3,11 +3,23 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+class LlmAttachment {
+  const LlmAttachment({required this.bytes, required this.mimeType});
+
+  final List<int> bytes;
+  final String mimeType;
+}
+
 class LlmMessage {
-  const LlmMessage({required this.role, required this.content});
+  const LlmMessage({
+    required this.role,
+    required this.content,
+    this.attachments = const [],
+  });
 
   final String role; // 'user' | 'assistant'
   final String content;
+  final List<LlmAttachment> attachments;
 }
 
 class LlmException implements Exception {
@@ -71,6 +83,13 @@ class GeminiTextProvider implements LlmProvider {
             {
               'role': m.role == 'assistant' ? 'model' : 'user',
               'parts': [
+                for (final attachment in m.attachments)
+                  {
+                    'inlineData': {
+                      'mimeType': attachment.mimeType,
+                      'data': base64Encode(attachment.bytes),
+                    },
+                  },
                 {'text': m.content},
               ],
             },

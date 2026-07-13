@@ -9,11 +9,11 @@ currently disabled.
 
 | Screen (design #) | Status |
 |---|---|
-| Splash, Onboarding, Sign In, Permissions (01–04) | ✅ working, local profile |
-| Orb UI kit: 9 animated states (idle/listening/thinking/speaking/error/offline/complete/sleep/attention) + 6 skins (Nebula/Ocean/Cosmic/Energy/Minimal/Holographic), selectable in Settings → Orb Skin and at registration | ✅ real-time CustomPainter, audio-reactive |
+| Splash, Onboarding, Sign In, Permissions (01–04) | ✅ local profile + Google OAuth-ready |
+| Living orb: animated listening/thinking/speaking/error states | ✅ lightweight CustomPainter, audio-reactive |
 | Home Dashboard + suggestions (05) | ✅ |
-| Voice assistant: idle / listening / thinking / speaking (06–09) | ✅ Gemini Live (16 kHz mic up, 24 kHz audio down, barge-in, live transcripts) |
-| Chat transcript + AI action cards (09–10) | ✅ streaming, provider-agnostic |
+| Voice assistant: idle / listening / thinking / speaking (06–09) | ✅ Gemini Live, acoustic echo protection, live camera vision |
+| Chat transcript + AI action cards (09–10) | ✅ streaming, photos, camera and document attachments |
 | Command Center shortcuts (11) | ✅ |
 | Tasks & Automations (12) | ✅ local storage |
 | Memory Vault (13) | ✅ injected into the system prompt for text *and* voice |
@@ -75,9 +75,23 @@ them):
 ```bash
 flutter build apk --release \
   --dart-define=MILA_BACKEND_URL=https://agent.milanapremium.uz \
-  --dart-define=APP_VERSION=1.0.1 \
-  --dart-define=APP_VERSION_CODE=2
+  --dart-define=APP_VERSION=1.1.0 \
+  --dart-define=APP_VERSION_CODE=5
 ```
+
+### Google Sign-In
+
+Create an Android OAuth client for package `app.milaai.mila` (with the SHA-1
+of the signing key) and a Web OAuth client in the same Google Cloud project.
+Then provide the Web client ID at build or run time:
+
+```powershell
+flutter run --dart-define=GOOGLE_WEB_CLIENT_ID=123456.apps.googleusercontent.com
+flutter build apk --release --dart-define=GOOGLE_WEB_CLIENT_ID=123456.apps.googleusercontent.com
+```
+
+The client ID is public configuration, not a client secret. A Google account
+updates the local MILA profile; provider API keys remain separate.
 
 > ⚠️ Anything compiled into an APK can be extracted. `--dart-define` is fine
 > for non-secret endpoints and internal/team defaults. Keep provider secrets

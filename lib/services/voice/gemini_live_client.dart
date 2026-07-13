@@ -123,6 +123,17 @@ class GeminiLiveClient {
     });
   }
 
+  /// Sends one JPEG camera frame. Gemini Live accepts at most one frame per
+  /// second; the caller owns that throttle.
+  void sendVideoFrame(Uint8List jpeg) {
+    if (!isConnected) return;
+    _send({
+      'realtimeInput': {
+        'video': {'data': base64Encode(jpeg), 'mimeType': 'image/jpeg'},
+      },
+    });
+  }
+
   /// Sends a typed message into the live session.
   void sendText(String text) {
     if (!isConnected) return;

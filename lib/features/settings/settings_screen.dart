@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +8,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/mila_theme.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models.dart';
+import '../../services/auth/google_auth_service.dart';
+import '../../services/soul/soul_service.dart';
 import '../../services/storage/stores.dart';
 import '../../services/update/update_service.dart';
 
@@ -61,9 +65,12 @@ class SettingsScreen extends ConsumerWidget {
         ),
       );
       if (saved == true) {
-        ref
-            .read(settingsProvider.notifier)
-            .update((s) => s.copyWith(personality: controller.text.trim()));
+        final updated = settings.copyWith(
+          personalityId: 'custom',
+          personality: controller.text.trim(),
+        );
+        ref.read(settingsProvider.notifier).update((_) => updated);
+        ref.read(soulServiceProvider).save(updated, profile);
       }
     }
 
@@ -88,9 +95,9 @@ class SettingsScreen extends ConsumerWidget {
         ),
       );
       if (choice != null) {
-        ref
-            .read(settingsProvider.notifier)
-            .update((s) => s.copyWith(language: choice));
+        final updated = settings.copyWith(language: choice);
+        ref.read(settingsProvider.notifier).update((_) => updated);
+        ref.read(soulServiceProvider).save(updated, profile);
       }
     }
 
@@ -211,9 +218,54 @@ class SettingsScreen extends ConsumerWidget {
         ),
       );
       if (saved == true && controller.text.trim().isNotEmpty) {
-        ref
-            .read(profileProvider.notifier)
-            .save(profile.copyWith(name: controller.text.trim()));
+        final updated = profile.copyWith(name: controller.text.trim());
+        ref.read(profileProvider.notifier).save(updated);
+        ref.read(soulServiceProvider).save(settings, updated);
+      }
+    }
+
+    Future<void> editAssistantName() async {
+      final controller = TextEditingController(text: settings.assistantName);
+      final saved = await showModalBottomSheet<bool>(
+        context: context,
+        isScrollControlled: true,
+        builder: (sheetContext) => Padding(
+          padding: EdgeInsets.only(
+            left: 24,
+            right: 24,
+            top: 24,
+            bottom: MediaQuery.viewInsetsOf(sheetContext).bottom + 28,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Assistant name',
+                style: Theme.of(sheetContext).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'This name becomes part of the assistant soul.',
+                style: Theme.of(sheetContext).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 14),
+              TextField(controller: controller, autofocus: true),
+              const SizedBox(height: 14),
+              GradientButton(
+                label: 'Save',
+                onPressed: () => Navigator.pop(sheetContext, true),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (saved == true && controller.text.trim().isNotEmpty) {
+        final updated = settings.copyWith(
+          assistantName: controller.text.trim(),
+        );
+        ref.read(settingsProvider.notifier).update((_) => updated);
+        ref.read(soulServiceProvider).save(updated, profile);
       }
     }
 
@@ -286,6 +338,13 @@ class SettingsScreen extends ConsumerWidget {
               title: 'AI Providers',
               value: providerLabel,
               onTap: () => context.push('/settings/providers'),
+            ),
+            tile(
+              icon: Icons.badge_outlined,
+              color: MilaColors.purple,
+              title: 'Assistant name',
+              value: settings.assistantName,
+              onTap: editAssistantName,
             ),
             tile(
               icon: Icons.record_voice_over_outlined,
@@ -370,6 +429,7 @@ class SettingsScreen extends ConsumerWidget {
               icon: Icons.logout_rounded,
               danger: true,
               onPressed: () {
+                unawaited(ref.read(googleAuthServiceProvider).signOut());
                 ref.read(profileProvider.notifier).signOut();
                 context.go('/signin');
               },

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -39,6 +40,10 @@ class LocalStore {
       return null;
     }
   }
+
+  String? readString(String key) => _box.get(key);
+
+  Future<void> writeString(String key, String value) => _box.put(key, value);
 
   Future<void> writeJson(String key, Object value) =>
       _box.put(key, jsonEncode(value));
@@ -148,6 +153,7 @@ class ChatController extends StateNotifier<List<ChatMessage>> {
             text: m.text + delta,
             createdAt: m.createdAt,
             actions: m.actions,
+            attachments: m.attachments,
             viaVoice: m.viaVoice,
           ))
         else
@@ -174,6 +180,11 @@ class ChatController extends StateNotifier<List<ChatMessage>> {
   }
 
   void clear() {
+    for (final message in state) {
+      for (final attachment in message.attachments) {
+        File(attachment.path).delete().catchError((_) => File(attachment.path));
+      }
+    }
     state = [];
     _persist();
   }
