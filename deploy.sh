@@ -20,14 +20,19 @@ fi
 
 $DOCKER compose up -d --build
 
+set +e
 for attempt in {1..20}; do
-  if curl -fsS http://127.0.0.1:8787/health; then
+  health_response="$(curl -fsS http://127.0.0.1:8787/health 2>/dev/null)"
+  health_status=$?
+  if [ "$health_status" -eq 0 ]; then
+    echo "$health_response"
     echo
     echo "MILA backend deployed."
     exit 0
   fi
   sleep 1
 done
+set -e
 
 echo
 echo "MILA backend did not become healthy in time." >&2
