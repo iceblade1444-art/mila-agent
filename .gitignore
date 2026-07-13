@@ -55,3 +55,6 @@ android/key.properties
 # Backend secrets
 backend/.env
 backend/data/
+
+# Server deployment artifacts
+downloads/
