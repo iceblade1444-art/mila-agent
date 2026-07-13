@@ -250,6 +250,7 @@ class VoiceController extends StateNotifier<VoiceState> {
     _manualInterruption = true;
     _feedGeneration++;
     _playQueue.clear();
+    _lastOutputChunk = DateTime.fromMillisecondsSinceEpoch(0);
     _commitTranscripts();
     try {
       await _player.clear();
@@ -303,13 +304,6 @@ class VoiceController extends StateNotifier<VoiceState> {
         encoder: AudioEncoder.pcm16bits,
         sampleRate: 16000,
         numChannels: 1,
-        echoCancel: true,
-        noiseSuppress: true,
-        androidConfig: AndroidRecordConfig(
-          audioSource: AndroidAudioSource.voiceCommunication,
-          speakerphone: true,
-          audioManagerMode: AudioManagerMode.modeInCommunication,
-        ),
       ),
     );
     _micSub = stream.listen((chunk) {
@@ -318,7 +312,10 @@ class VoiceController extends StateNotifier<VoiceState> {
       // Full-duplex speaker audio is easily picked up by the microphone on
       // phones without reliable hardware AEC. Keep listening visually, but
       // only transmit while the assistant is not speaking.
-      if (state.phase != VoicePhase.speaking) {
+      final outputIsQuiet =
+          DateTime.now().difference(_lastOutputChunk) >
+          const Duration(milliseconds: 1400);
+      if (state.phase != VoicePhase.speaking && outputIsQuiet) {
         _client?.sendAudioChunk(chunk);
       }
       if (mounted && state.active) {
