@@ -8,6 +8,9 @@ class AppConfig {
     defaultValue: defaultBackendUrl,
   );
 
+  static const hasBundledGeminiKey =
+      String.fromEnvironment('GEMINI_API_KEY') != '';
+
   static const legacyBackendUrl = String.fromEnvironment(
     'MILA_OPENAI_ACCOUNT_URL',
   );

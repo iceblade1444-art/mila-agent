@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/theme/mila_theme.dart';
 import '../../core/widgets/common.dart';
+import '../../core/config/app_config.dart';
 import '../../services/integrations/integration_service.dart';
 import '../../services/storage/stores.dart';
 
@@ -15,6 +16,9 @@ final providerKeysProvider = FutureProvider<Set<String>>((ref) async {
     result.add('Claude');
   }
   if ((await secure.read(SecureStore.geminiKey))?.isNotEmpty == true) {
+    result.add('Gemini');
+  }
+  if (AppConfig.hasBundledGeminiKey) {
     result.add('Gemini');
   }
   return result;

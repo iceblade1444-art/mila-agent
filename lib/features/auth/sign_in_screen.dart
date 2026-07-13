@@ -191,29 +191,30 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                     busy: _localBusy,
                     onPressed: _localBusy ? null : () => unawaited(_submit()),
                   ),
-                  const SizedBox(height: 28),
-                  Row(
-                    children: [
-                      const Expanded(child: Divider()),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: Text('or continue with', style: text.labelSmall),
-                      ),
-                      const Expanded(child: Divider()),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  GhostButton(
-                    label: !googleConfigured
-                        ? 'Google setup required'
-                        : _googleBusy
-                        ? 'Connecting to Google...'
-                        : 'Continue with Google',
-                    icon: Icons.g_mobiledata_rounded,
-                    onPressed: !googleConfigured || _googleBusy
-                        ? null
-                        : _signInWithGoogle,
-                  ),
+                  if (googleConfigured) ...[
+                    const SizedBox(height: 28),
+                    Row(
+                      children: [
+                        const Expanded(child: Divider()),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Text(
+                            'or continue with',
+                            style: text.labelSmall,
+                          ),
+                        ),
+                        const Expanded(child: Divider()),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    GhostButton(
+                      label: _googleBusy
+                          ? 'Connecting to Google...'
+                          : 'Continue with Google',
+                      icon: Icons.g_mobiledata_rounded,
+                      onPressed: _googleBusy ? null : _signInWithGoogle,
+                    ),
+                  ],
                   const SizedBox(height: 32),
                   Center(
                     child: GestureDetector(

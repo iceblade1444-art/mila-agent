@@ -288,7 +288,7 @@ class VoiceController extends StateNotifier<VoiceState> {
     }
     if (accessToken.isEmpty && apiKey.isEmpty) {
       throw StateError(
-        'Secure voice is unavailable. ${secureTokenError ?? 'Connect your MILA account or add a Gemini API key in Settings → AI Providers.'}',
+        'Secure voice is unavailable. ${secureTokenError ?? 'Gemini access is not included in this build.'}',
       );
     }
     return (apiKey: apiKey, accessToken: accessToken);

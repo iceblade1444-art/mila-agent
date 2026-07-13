@@ -112,18 +112,57 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
     final settings = ref.watch(settingsProvider);
 
     Widget geminiKeyField() {
+      final hasOverride = _geminiKey.text.trim().isNotEmpty;
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Gemini API key', style: text.labelMedium),
-          const SizedBox(height: 8),
+          Text('Gemini access', style: text.labelMedium),
+          const SizedBox(height: 10),
+          GlassCard(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            borderColor: AppConfig.hasBundledGeminiKey
+                ? MilaColors.success.withValues(alpha: 0.34)
+                : MilaColors.cardBorder,
+            color: AppConfig.hasBundledGeminiKey
+                ? MilaColors.success.withValues(alpha: 0.08)
+                : null,
+            child: Row(
+              children: [
+                Icon(
+                  AppConfig.hasBundledGeminiKey
+                      ? Icons.verified_user_outlined
+                      : Icons.key_off_outlined,
+                  color: AppConfig.hasBundledGeminiKey
+                      ? MilaColors.success
+                      : MilaColors.textTertiary,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    AppConfig.hasBundledGeminiKey
+                        ? 'Integrated Gemini key is active'
+                        : 'No integrated Gemini key in this build',
+                    style: text.bodyMedium,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            hasOverride ? 'Developer override key' : 'Developer override',
+            style: text.labelSmall,
+          ),
+          const SizedBox(height: 6),
           TextField(
             controller: _geminiKey,
             obscureText: !_showGeminiKey,
             autocorrect: false,
             enableSuggestions: false,
             decoration: InputDecoration(
-              hintText: 'AIza...',
+              hintText: AppConfig.hasBundledGeminiKey
+                  ? 'Optional: override integrated key'
+                  : 'AIza...',
               suffixIcon: IconButton(
                 icon: Icon(
                   _showGeminiKey
@@ -224,7 +263,7 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Text chat and real-time voice both use your Gemini key.',
+                    'Text chat and real-time voice use MILA integrated Gemini access.',
                     style: text.bodySmall,
                   ),
                   const SizedBox(height: 14),

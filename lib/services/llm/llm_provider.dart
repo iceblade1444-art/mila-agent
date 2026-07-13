@@ -60,9 +60,7 @@ class GeminiTextProvider implements LlmProvider {
     required String systemPrompt,
   }) async* {
     if (apiKey.isEmpty) {
-      throw LlmException(
-        'Gemini API key is missing. Add it in Settings → AI Providers.',
-      );
+      throw LlmException('Gemini access is not included in this build.');
     }
     final candidates = <String>[
       model,
