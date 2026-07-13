@@ -234,7 +234,7 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
                   TextField(
                     controller: _geminiModel,
                     decoration: const InputDecoration(
-                      hintText: 'gemini-3.5-flash',
+                      hintText: 'gemini-2.5-flash',
                     ),
                   ),
                   const SizedBox(height: 16),

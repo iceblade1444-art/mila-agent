@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -25,6 +27,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   final _password = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _creating = false;
+  bool _localBusy = false;
   bool _googleBusy = false;
 
   @override
@@ -35,8 +38,10 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     super.dispose();
   }
 
-  void _submit() {
+  Future<void> _submit() async {
+    if (_localBusy) return;
     if (!(_formKey.currentState?.validate() ?? false)) return;
+    setState(() => _localBusy = true);
     final email = _email.text.trim();
     final existing = ref.read(profileProvider);
     // Keep the name chosen during first-run setup.
@@ -49,6 +54,10 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     ref
         .read(profileProvider.notifier)
         .save(UserProfile(name: name, email: email, signedIn: true));
+    await ref
+        .read(soulServiceProvider)
+        .save(ref.read(settingsProvider), ref.read(profileProvider));
+    if (!mounted) return;
     context.go(
       ref.read(settingsProvider).assistantSetupDone
           ? '/permissions'
@@ -93,6 +102,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
+    const googleConfigured = GoogleAuthService.isConfigured;
     return Scaffold(
       body: MilaBackground(
         child: SafeArea(
@@ -178,7 +188,8 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   const SizedBox(height: 28),
                   GradientButton(
                     label: _creating ? 'Create Account' : 'Sign In',
-                    onPressed: _submit,
+                    busy: _localBusy,
+                    onPressed: _localBusy ? null : () => unawaited(_submit()),
                   ),
                   const SizedBox(height: 28),
                   Row(
@@ -193,11 +204,15 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   ),
                   const SizedBox(height: 20),
                   GhostButton(
-                    label: _googleBusy
-                        ? 'Connecting to Google…'
+                    label: !googleConfigured
+                        ? 'Google setup required'
+                        : _googleBusy
+                        ? 'Connecting to Google...'
                         : 'Continue with Google',
                     icon: Icons.g_mobiledata_rounded,
-                    onPressed: _googleBusy ? null : _signInWithGoogle,
+                    onPressed: !googleConfigured || _googleBusy
+                        ? null
+                        : _signInWithGoogle,
                   ),
                   const SizedBox(height: 32),
                   Center(

@@ -15,10 +15,11 @@ class GoogleAuthException implements Exception {
 
 class GoogleAuthService {
   static const _serverClientId = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
+  static const isConfigured = _serverClientId != '';
   bool _initialized = false;
 
   Future<GoogleSignInAccount> signIn() async {
-    if (_serverClientId.isEmpty) {
+    if (!isConfigured) {
       throw const GoogleAuthException(
         'Google Sign-In is not configured yet. Add GOOGLE_WEB_CLIENT_ID to the app build.',
       );

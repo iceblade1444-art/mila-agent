@@ -334,7 +334,7 @@ class AppSettings {
     this.permissionsDone = false,
     this.provider = LlmProviderKind.gemini,
     this.openAiModel = 'gpt-5.5',
-    this.geminiModel = 'gemini-3.5-flash',
+    this.geminiModel = 'gemini-2.5-flash',
     this.anthropicModel = 'claude-sonnet-5',
     this.geminiLiveModel = 'gemini-3.1-flash-live-preview',
     this.voiceName = femaleVoiceName,
@@ -403,7 +403,7 @@ class AppSettings {
   );
 
   Map<String, dynamic> toJson() => {
-    'v': 10,
+    'v': 11,
     'onboarded': onboarded,
     'permissionsDone': permissionsDone,
     'provider': provider.name,
@@ -454,9 +454,11 @@ class AppSettings {
     if (version < 9 && personality == oldFemalePersonality) {
       personality = newPersonality;
     }
-    var geminiModel = json['geminiModel'] as String? ?? 'gemini-3.5-flash';
-    if (version < 8 && geminiModel == 'gemini-2.5-flash') {
-      geminiModel = 'gemini-3.5-flash';
+    var geminiModel = json['geminiModel'] as String? ?? 'gemini-2.5-flash';
+    if (version < 11 &&
+        (geminiModel == 'gemini-3.5-flash' ||
+            geminiModel == 'gemini-3.1-flash')) {
+      geminiModel = 'gemini-2.5-flash';
     }
     final rawProvider = LlmProviderKind.values.firstWhere(
       (k) => k.name == json['provider'],

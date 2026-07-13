@@ -64,6 +64,37 @@ class GeminiTextProvider implements LlmProvider {
         'Gemini API key is missing. Add it in Settings → AI Providers.',
       );
     }
+    final candidates = <String>[
+      model,
+      'gemini-2.5-flash',
+      'gemini-flash-latest',
+      'gemini-2.0-flash',
+    ].where((value) => value.trim().isNotEmpty).toSet().toList();
+
+    LlmException? retryableFailure;
+    for (final candidate in candidates) {
+      try {
+        yield* _streamModel(
+          model: candidate,
+          messages: messages,
+          systemPrompt: systemPrompt,
+        );
+        return;
+      } on LlmException catch (error) {
+        if (!_isRetryableGeminiModelError(error.message)) rethrow;
+        retryableFailure = error;
+      }
+    }
+
+    throw retryableFailure ??
+        LlmException('Gemini could not answer with the configured models.');
+  }
+
+  Stream<String> _streamModel({
+    required String model,
+    required List<LlmMessage> messages,
+    required String systemPrompt,
+  }) async* {
     final uri = Uri.parse(
       'https://generativelanguage.googleapis.com/v1beta/models/$model:streamGenerateContent?alt=sse',
     );
@@ -214,4 +245,11 @@ String _apiErrorMessage(String body) {
   } catch (_) {
     return body.length > 200 ? body.substring(0, 200) : body;
   }
+}
+
+bool _isRetryableGeminiModelError(String message) {
+  return message.startsWith('Gemini error 404:') ||
+      message.startsWith('Gemini error 429:') ||
+      message.startsWith('Gemini error 500:') ||
+      message.startsWith('Gemini error 503:');
 }

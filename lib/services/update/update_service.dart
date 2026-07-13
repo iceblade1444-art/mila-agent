@@ -39,11 +39,11 @@ class UpdateService {
 
   static const currentVersion = String.fromEnvironment(
     'APP_VERSION',
-    defaultValue: '1.1.1',
+    defaultValue: '1.1.2',
   );
   static const currentVersionCode = int.fromEnvironment(
     'APP_VERSION_CODE',
-    defaultValue: 6,
+    defaultValue: 7,
   );
 
   final Ref _ref;
