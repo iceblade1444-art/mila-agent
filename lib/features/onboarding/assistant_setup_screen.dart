@@ -6,13 +6,9 @@ import '../../core/theme/mila_theme.dart';
 import '../../core/widgets/common.dart';
 import '../../core/widgets/voice_orb.dart';
 import '../../data/models.dart';
-import '../../features/settings/orb_skin_picker.dart';
 import '../../services/storage/stores.dart';
-import '../../services/voice/voice_controller.dart';
 
-/// Shown once right after registration: pick the voice assistant's
-/// defaults (voice, language, character). Everything stays editable
-/// later in Settings.
+/// A short first-run introduction shown before account sign-in.
 class AssistantSetupScreen extends ConsumerStatefulWidget {
   const AssistantSetupScreen({super.key});
 
@@ -22,58 +18,22 @@ class AssistantSetupScreen extends ConsumerStatefulWidget {
 }
 
 class _AssistantSetupScreenState extends ConsumerState<AssistantSetupScreen> {
-  static const _voices = [
-    'Aoede',
-    'Puck',
-    'Charon',
-    'Kore',
-    'Fenrir',
-    'Leda',
-    'Orus',
-    'Zephyr',
-  ];
+  static const _languages = ['Русский', 'English', 'O\'zbekcha'];
 
-  static const _languages = [
-    'Русский',
-    'English',
-    'O\'zbekcha',
-  ];
-
-  static const _styles = <(String, String, String, IconData)>[
-    (
-      'Warm & friendly',
-      'Casual, encouraging, a little playful.',
-      'Warm, friendly and a little playful. Encouraging tone, casual wording, keep answers short and useful.',
-      Icons.favorite_outline_rounded,
-    ),
-    (
-      'Professional & brief',
-      'To the point, no fluff, business tone.',
-      'Professional and concise. Business tone, no filler words, answer first, details only when asked.',
-      Icons.work_outline_rounded,
-    ),
-    (
-      'Playful & energetic',
-      'Upbeat, witty, loves a good joke.',
-      'Playful, energetic and witty. Upbeat tone, light humor where appropriate, still helpful and clear.',
-      Icons.celebration_outlined,
-    ),
-  ];
-
-  String _voice = 'Aoede';
-  String _language = 'Русский';
-  int _style = 0;
-  OrbSkin _skin = OrbSkin.nebula;
   final _addressName = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  AssistantVoiceGender _voiceGender = AssistantVoiceGender.female;
+  String _language = 'Русский';
 
   @override
   void initState() {
     super.initState();
-    final s = ref.read(settingsProvider);
+    final settings = ref.read(settingsProvider);
     _addressName.text = ref.read(profileProvider).name;
-    _voice = s.voiceName;
-    _skin = orbSkinFromName(s.orbSkin);
-    if (_languages.contains(s.language)) _language = s.language;
+    _voiceGender = assistantVoiceGenderFromName(settings.voiceName);
+    if (_languages.contains(settings.language)) {
+      _language = settings.language;
+    }
   }
 
   @override
@@ -83,41 +43,35 @@ class _AssistantSetupScreenState extends ConsumerState<AssistantSetupScreen> {
   }
 
   void _finish() {
-    final name = _addressName.text.trim();
-    if (name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Tell MILA how to address you.')),
-      );
-      return;
-    }
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+
     final profile = ref.read(profileProvider);
-    ref.read(profileProvider.notifier).save(
+    ref
+        .read(profileProvider.notifier)
+        .save(
           UserProfile(
-            name: name,
+            name: _addressName.text.trim(),
             email: profile.email,
             signedIn: profile.signedIn,
           ),
         );
-    final settings = ref.read(settingsProvider.notifier);
-    settings.update((s) => s.copyWith(
-          voiceName: _voice,
-          language: _language,
-          personality: _styles[_style].$3,
-          assistantSetupDone: true,
-          orbSkin: _skin.name,
-        ));
-    final permissionsDone = ref.read(settingsProvider).permissionsDone;
-    context.go(permissionsDone ? '/home' : '/permissions');
-  }
+    ref
+        .read(settingsProvider.notifier)
+        .update(
+          (settings) => settings.copyWith(
+            voiceName: voiceNameForGender(_voiceGender),
+            language: _language,
+            assistantSetupDone: true,
+          ),
+        );
 
-  Future<void> _previewVoice() async {
-    await ref.read(voiceControllerProvider.notifier).previewVoice(_voice);
-    if (!mounted) return;
-    final voice = ref.read(voiceControllerProvider);
-    if (voice.phase == VoicePhase.error) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(voice.error)));
-      ref.read(voiceControllerProvider.notifier).dismissError();
+    if (!profile.signedIn) {
+      context.go('/signin');
+      return;
     }
+    context.go(
+      ref.read(settingsProvider).permissionsDone ? '/home' : '/permissions',
+    );
   }
 
   @override
@@ -126,187 +80,176 @@ class _AssistantSetupScreenState extends ConsumerState<AssistantSetupScreen> {
     return Scaffold(
       body: MilaBackground(
         child: SafeArea(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  physics: const BouncingScrollPhysics(),
-                  children: [
-                    const SizedBox(height: 20),
-                    Center(child: VoiceOrb(size: 110, skin: _skin)),
-                    const SizedBox(height: 18),
-                    Center(
-                        child: Text('Set up your assistant',
-                            style: text.headlineMedium)),
-                    const SizedBox(height: 6),
-                    Center(
-                      child: Text(
-                        'Pick MILA\'s defaults — you can change them anytime in Settings.',
+          child: Form(
+            key: _formKey,
+            child: Column(
+              children: [
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    physics: const BouncingScrollPhysics(),
+                    children: [
+                      const SizedBox(height: 18),
+                      const Center(
+                        child: VoiceOrb(size: 146, mood: OrbMood.attention),
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        'Let\'s get acquainted',
                         textAlign: TextAlign.center,
-                        style: text.bodySmall,
+                        style: text.headlineMedium,
                       ),
-                    ),
-                    const SizedBox(height: 26),
-                    Text(
-                      'HOW SHOULD MILA ADDRESS YOU?',
-                      style: text.labelSmall?.copyWith(letterSpacing: 1.5),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: _addressName,
-                      keyboardType: TextInputType.name,
-                      textCapitalization: TextCapitalization.words,
-                      decoration: const InputDecoration(
-                        hintText: 'Your preferred name',
-                        prefixIcon: Icon(Icons.person_outline_rounded),
+                      const SizedBox(height: 6),
+                      Text(
+                        'I\'m MILA. What should I call you?',
+                        textAlign: TextAlign.center,
+                        style: text.bodyMedium?.copyWith(
+                          color: MilaColors.textSecondary,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 22),
-                    Text('VOICE',
-                        style: text.labelSmall?.copyWith(letterSpacing: 1.5)),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final v in _voices)
-                          MilaChip(
-                            label: v,
-                            active: _voice == v,
-                            onTap: () => setState(() => _voice = v),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    GhostButton(
-                      label: 'Listen to $_voice',
-                      icon: Icons.volume_up_outlined,
-                      onPressed: _previewVoice,
-                    ),
-                    const SizedBox(height: 22),
-                    Text('ORB SKIN',
-                        style: text.labelSmall?.copyWith(letterSpacing: 1.5)),
-                    const SizedBox(height: 10),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      physics: const BouncingScrollPhysics(),
-                      child: Row(
+                      const SizedBox(height: 24),
+                      TextFormField(
+                        controller: _addressName,
+                        keyboardType: TextInputType.name,
+                        textCapitalization: TextCapitalization.words,
+                        textInputAction: TextInputAction.done,
+                        autofillHints: const [AutofillHints.name],
+                        decoration: const InputDecoration(
+                          labelText: 'Your name',
+                          hintText: 'How MILA should address you',
+                          prefixIcon: Icon(Icons.person_outline_rounded),
+                        ),
+                        validator: (value) => (value ?? '').trim().isEmpty
+                            ? 'Please enter your name'
+                            : null,
+                        onFieldSubmitted: (_) => _finish(),
+                      ),
+                      const SizedBox(height: 24),
+                      Text(
+                        'VOICE',
+                        style: text.labelSmall?.copyWith(letterSpacing: 1.5),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
                         children: [
-                          for (final skin in OrbSkin.values)
-                            Padding(
-                              padding: const EdgeInsets.only(right: 10),
-                              child: GestureDetector(
-                                onTap: () => setState(() => _skin = skin),
-                                child: AnimatedContainer(
-                                  duration:
-                                      const Duration(milliseconds: 200),
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 10, vertical: 8),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white
-                                        .withValues(alpha: 0.04),
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(
-                                      color: _skin == skin
-                                          ? MilaColors.cyan
-                                          : MilaColors.cardBorder,
-                                      width: _skin == skin ? 1.6 : 1,
-                                    ),
-                                  ),
-                                  child: Column(
-                                    children: [
-                                      VoiceOrb(
-                                          size: 62,
-                                          skin: skin,
-                                          mood: OrbMood.idle),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        orbSkinLabels[skin]!,
-                                        style: text.labelSmall?.copyWith(
-                                            fontSize: 10,
-                                            color: _skin == skin
-                                                ? MilaColors.cyan
-                                                : MilaColors
-                                                    .textSecondary),
-                                      ),
-                                    ],
-                                  ),
-                                ),
+                          Expanded(
+                            child: _VoiceGenderCard(
+                              label: 'Female',
+                              subtitle: 'Warm and clear',
+                              icon: Icons.female_rounded,
+                              selected:
+                                  _voiceGender == AssistantVoiceGender.female,
+                              onTap: () => setState(
+                                () =>
+                                    _voiceGender = AssistantVoiceGender.female,
                               ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _VoiceGenderCard(
+                              label: 'Male',
+                              subtitle: 'Calm and confident',
+                              icon: Icons.male_rounded,
+                              selected:
+                                  _voiceGender == AssistantVoiceGender.male,
+                              onTap: () => setState(
+                                () => _voiceGender = AssistantVoiceGender.male,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      Text(
+                        'PRIMARY LANGUAGE',
+                        style: text.labelSmall?.copyWith(letterSpacing: 1.5),
+                      ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final language in _languages)
+                            MilaChip(
+                              label: language,
+                              active: _language == language,
+                              onTap: () => setState(() => _language = language),
                             ),
                         ],
                       ),
-                    ),
-                    const SizedBox(height: 22),
-                    Text('LANGUAGE',
-                        style: text.labelSmall?.copyWith(letterSpacing: 1.5)),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final l in _languages)
-                          MilaChip(
-                            label: l,
-                            active: _language == l,
-                            onTap: () => setState(() => _language = l),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 22),
-                    Text('CHARACTER',
-                        style: text.labelSmall?.copyWith(letterSpacing: 1.5)),
-                    const SizedBox(height: 10),
-                    for (final (i, style) in _styles.indexed)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: GlassCard(
-                          onTap: () => setState(() => _style = i),
-                          borderColor: _style == i
-                              ? MilaColors.violet
-                              : MilaColors.cardBorder,
-                          color: _style == i
-                              ? MilaColors.violet.withValues(alpha: 0.10)
-                              : null,
-                          child: Row(
-                            children: [
-                              TileIcon(
-                                  icon: style.$4,
-                                  color: _style == i
-                                      ? MilaColors.cyan
-                                      : MilaColors.violet),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  children: [
-                                    Text(style.$1, style: text.titleSmall),
-                                    const SizedBox(height: 3),
-                                    Text(style.$2, style: text.bodySmall),
-                                  ],
-                                ),
-                              ),
-                              if (_style == i)
-                                const Icon(Icons.check_circle_rounded,
-                                    color: MilaColors.cyan, size: 22),
-                            ],
-                          ),
-                        ),
-                      ),
-                    const SizedBox(height: 8),
-                  ],
+                      const SizedBox(height: 18),
+                    ],
+                  ),
                 ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
+                  child: GradientButton(
+                    label: 'Continue',
+                    icon: Icons.arrow_forward_rounded,
+                    onPressed: _finish,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _VoiceGenderCard extends StatelessWidget {
+  const _VoiceGenderCard({
+    required this.label,
+    required this.subtitle,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final String subtitle;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return GlassCard(
+      onTap: onTap,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+      borderColor: selected ? MilaColors.cyan : MilaColors.cardBorder,
+      color: selected ? MilaColors.cyan.withValues(alpha: 0.08) : null,
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Icon(
+                icon,
+                size: 25,
+                color: selected ? MilaColors.cyan : MilaColors.textSecondary,
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 4, 24, 20),
-                child: GradientButton(label: 'Continue', onPressed: _finish),
+              const Spacer(),
+              Icon(
+                selected ? Icons.check_circle_rounded : Icons.circle_outlined,
+                size: 20,
+                color: selected ? MilaColors.cyan : MilaColors.textTertiary,
               ),
             ],
           ),
-        ),
+          const SizedBox(height: 13),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(label, style: text.titleSmall),
+          ),
+          const SizedBox(height: 3),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(subtitle, style: text.bodySmall),
+          ),
+        ],
       ),
     );
   }

@@ -99,7 +99,7 @@ class OnboardingScreen extends ConsumerWidget {
                     ref
                         .read(settingsProvider.notifier)
                         .update((s) => s.copyWith(onboarded: true));
-                    context.go('/signin');
+                    context.go('/assistant-setup');
                   },
                 ),
                 const SizedBox(height: 20),

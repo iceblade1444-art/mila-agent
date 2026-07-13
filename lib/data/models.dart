@@ -213,6 +213,24 @@ class UserProfile {
 
 enum LlmProviderKind { openaiAccount, openai, gemini, claude }
 
+enum AssistantVoiceGender { female, male }
+
+const femaleVoiceName = 'Aoede';
+const maleVoiceName = 'Puck';
+
+AssistantVoiceGender assistantVoiceGenderFromName(String voiceName) {
+  const knownMaleVoices = {'Puck', 'Charon', 'Fenrir', 'Orus'};
+  return knownMaleVoices.contains(voiceName)
+      ? AssistantVoiceGender.male
+      : AssistantVoiceGender.female;
+}
+
+String voiceNameForGender(AssistantVoiceGender gender) =>
+    gender == AssistantVoiceGender.female ? femaleVoiceName : maleVoiceName;
+
+String voiceGenderLabel(AssistantVoiceGender gender) =>
+    gender == AssistantVoiceGender.female ? 'Female' : 'Male';
+
 /// App settings persisted locally. API keys live in secure storage, not here.
 class AppSettings {
   const AppSettings({
@@ -223,9 +241,9 @@ class AppSettings {
     this.geminiModel = 'gemini-3.5-flash',
     this.anthropicModel = 'claude-sonnet-5',
     this.geminiLiveModel = 'gemini-3.1-flash-live-preview',
-    this.voiceName = 'Aoede',
+    this.voiceName = femaleVoiceName,
     this.personality =
-        'A young female assistant with an elegant, warm and slightly playful style — intelligent, attentive and professional. Light, pleasant tone, but always respectful, useful and business-focused; never overly emotional or childish.',
+        'An elegant, warm and slightly playful assistant: intelligent, attentive and professional. Pleasant, natural tone, always respectful, useful and business-focused; never overly emotional or childish.',
     this.language = 'Русский',
     this.conciseSummaries = true,
     this.autoMemory = true,
@@ -281,7 +299,7 @@ class AppSettings {
   );
 
   Map<String, dynamic> toJson() => {
-    'v': 8,
+    'v': 9,
     'onboarded': onboarded,
     'permissionsDone': permissionsDone,
     'provider': provider.name,
@@ -317,12 +335,17 @@ class AppSettings {
     if (version < 5 && language == 'English') {
       language = 'Русский'; // old default; primary language is Russian now
     }
-    const newPersonality =
+    const oldFemalePersonality =
         'A young female assistant with an elegant, warm and slightly playful style — intelligent, attentive and professional. Light, pleasant tone, but always respectful, useful and business-focused; never overly emotional or childish.';
+    const newPersonality =
+        'An elegant, warm and slightly playful assistant: intelligent, attentive and professional. Pleasant, natural tone, always respectful, useful and business-focused; never overly emotional or childish.';
     var personality = json['personality'] as String? ?? newPersonality;
     if (version < 6 &&
         personality ==
             'Warm, concise and proactive. Keep answers short and useful.') {
+      personality = newPersonality;
+    }
+    if (version < 9 && personality == oldFemalePersonality) {
       personality = newPersonality;
     }
     var geminiModel = json['geminiModel'] as String? ?? 'gemini-3.5-flash';
@@ -334,8 +357,8 @@ class AppSettings {
       orElse: () => LlmProviderKind.gemini,
     );
     final provider = switch (rawProvider) {
-      LlmProviderKind.openaiAccount || LlmProviderKind.openai =>
-        LlmProviderKind.gemini,
+      LlmProviderKind.openaiAccount ||
+      LlmProviderKind.openai => LlmProviderKind.gemini,
       _ => rawProvider,
     };
     return AppSettings(
@@ -346,7 +369,7 @@ class AppSettings {
       geminiModel: geminiModel,
       anthropicModel: json['anthropicModel'] as String? ?? 'claude-sonnet-5',
       geminiLiveModel: liveModel,
-      voiceName: json['voiceName'] as String? ?? 'Aoede',
+      voiceName: json['voiceName'] as String? ?? femaleVoiceName,
       personality: personality,
       language: language,
       conciseSummaries: json['conciseSummaries'] as bool? ?? true,

@@ -7,7 +7,6 @@ import '../../core/theme/mila_theme.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models.dart';
 import '../../services/storage/stores.dart';
-import 'orb_skin_picker.dart';
 import '../../services/update/update_service.dart';
 
 /// Profile & Settings (design screen 15).
@@ -292,7 +291,9 @@ class SettingsScreen extends ConsumerWidget {
               icon: Icons.record_voice_over_outlined,
               color: MilaColors.violet,
               title: 'Voice & Speech',
-              value: settings.voiceName,
+              value: voiceGenderLabel(
+                assistantVoiceGenderFromName(settings.voiceName),
+              ),
               onTap: () => context.push('/settings/providers'),
             ),
             tile(
@@ -335,14 +336,6 @@ class SettingsScreen extends ConsumerWidget {
                   ),
                 ),
               ),
-            ),
-            tile(
-              icon: Icons.blur_on_rounded,
-              color: MilaColors.purple,
-              title: 'Orb Skin',
-              value: settings.orbSkin[0].toUpperCase() +
-                  settings.orbSkin.substring(1),
-              onTap: () => showOrbSkinPicker(context, ref),
             ),
             tile(
               icon: Icons.language_rounded,

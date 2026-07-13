@@ -26,17 +26,6 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
   bool _loaded = false;
   bool _showGeminiKey = false;
 
-  static const _voices = [
-    'Aoede',
-    'Puck',
-    'Charon',
-    'Kore',
-    'Fenrir',
-    'Leda',
-    'Orus',
-    'Zephyr',
-  ];
-
   @override
   void initState() {
     super.initState();
@@ -72,9 +61,9 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
     if (!mounted) return;
     final state = ref.read(voiceControllerProvider);
     if (state.phase == VoicePhase.error) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(state.error)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(state.error)));
       ref.read(voiceControllerProvider.notifier).dismissError();
     }
   }
@@ -263,19 +252,28 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      for (final v in _voices)
+                      for (final gender in AssistantVoiceGender.values)
                         MilaChip(
-                          label: v,
-                          active: settings.voiceName == v,
+                          label: voiceGenderLabel(gender),
+                          active:
+                              assistantVoiceGenderFromName(
+                                settings.voiceName,
+                              ) ==
+                              gender,
                           onTap: () => ref
                               .read(settingsProvider.notifier)
-                              .update((s) => s.copyWith(voiceName: v)),
+                              .update(
+                                (s) => s.copyWith(
+                                  voiceName: voiceNameForGender(gender),
+                                ),
+                              ),
                         ),
                     ],
                   ),
                   const SizedBox(height: 10),
                   GhostButton(
-                    label: 'Listen to ${settings.voiceName}',
+                    label:
+                        'Listen to ${voiceGenderLabel(assistantVoiceGenderFromName(settings.voiceName)).toLowerCase()} voice',
                     icon: Icons.volume_up_outlined,
                     onPressed: () => _previewVoice(settings.voiceName),
                   ),

@@ -36,9 +36,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     final email = _email.text.trim();
     final existing = ref.read(profileProvider);
-    // Priority: typed name → previously stored name → email prefix.
+    // Keep the name chosen during first-run setup.
     var name = _name.text.trim();
-    if (name.isEmpty) name = existing.name;
+    if (existing.name.isNotEmpty) name = existing.name;
     if (name.isEmpty) {
       final prefix = email.split('@').first;
       name = prefix[0].toUpperCase() + prefix.substring(1);
