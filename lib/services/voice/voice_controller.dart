@@ -4,7 +4,6 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_sound/flutter_sound.dart';
 import 'package:record/record.dart';
 
 import '../../core/config/app_config.dart';
@@ -13,6 +12,7 @@ import '../llm/llm_service.dart';
 import '../storage/stores.dart';
 import 'gemini_live_client.dart';
 import 'gemini_live_token_service.dart';
+import 'pcm_stream_player.dart';
 
 enum VoicePhase { idle, connecting, listening, thinking, speaking, error }
 
@@ -71,13 +71,12 @@ class VoiceController extends StateNotifier<VoiceState> {
   GeminiLiveClient? _client;
   final AudioRecorder _recorder = AudioRecorder();
   StreamSubscription<Uint8List>? _micSub;
-  final FlutterSoundPlayer _player = FlutterSoundPlayer();
+  final PcmStreamPlayer _player = PcmStreamPlayer();
   bool _playerReady = false;
 
   final Queue<Uint8List> _playQueue = Queue();
   bool _draining = false;
   int _feedGeneration = 0; // bumped on interruption to drop stale audio
-  bool _restartPlayerWhenIdle = false;
 
   String _userText = '';
   String _assistantText = '';
@@ -87,6 +86,8 @@ class VoiceController extends StateNotifier<VoiceState> {
   DateTime _lastMicVoice = DateTime.fromMillisecondsSinceEpoch(0);
   DateTime _lastOutputChunk = DateTime.fromMillisecondsSinceEpoch(0);
   Timer? _ticker;
+  String _sessionResumptionHandle = '';
+  bool _resumeInProgress = false;
 
   /// Plays a short sample using the currently configured Gemini voice. This
   /// uses the same secured Live connection as a conversation, so users hear
@@ -126,7 +127,9 @@ class VoiceController extends StateNotifier<VoiceState> {
             _teardown();
             state = VoiceState(
               phase: VoicePhase.error,
-              error: reason.isEmpty ? 'Voice preview ended unexpectedly.' : reason,
+              error: reason.isEmpty
+                  ? 'Voice preview ended unexpectedly.'
+                  : reason,
             );
           }
         }
@@ -173,6 +176,8 @@ class VoiceController extends StateNotifier<VoiceState> {
           .buildSystemPrompt(forVoice: true);
 
       await _openPlayer();
+      _sessionResumptionHandle = '';
+      _resumeInProgress = false;
 
       final client = GeminiLiveClient(
         apiKey: credentials.apiKey,
@@ -184,29 +189,7 @@ class VoiceController extends StateNotifier<VoiceState> {
       _client = client;
 
       final ready = Completer<void>();
-      client
-        ..onReady = () {
-          if (!ready.isCompleted) ready.complete();
-        }
-        ..onAudio = _onAudio
-        ..onInputTranscription = _onInputTranscription
-        ..onOutputTranscription = _onOutputTranscription
-        ..onTurnComplete = _onTurnComplete
-        ..onInterrupted = _onInterrupted
-        ..onClosed = (reason) {
-          if (state.active || state.phase == VoicePhase.connecting) {
-            _teardown();
-            state = VoiceState(
-              phase: VoicePhase.error,
-              error: reason.isEmpty
-                  ? 'Voice session ended unexpectedly. Check your API key and model name in Settings.'
-                  : 'Voice session closed: $reason',
-            );
-          }
-        }
-        ..onError = (e) {
-          if (!ready.isCompleted) ready.completeError(e);
-        };
+      _wireConversationClient(client, ready);
 
       await client.connect();
       await ready.future.timeout(const Duration(seconds: 12));
@@ -305,6 +288,80 @@ class VoiceController extends StateNotifier<VoiceState> {
     });
   }
 
+  void _wireConversationClient(GeminiLiveClient client, Completer<void> ready) {
+    client
+      ..onReady = () {
+        if (!ready.isCompleted) ready.complete();
+      }
+      ..onAudio = _onAudio
+      ..onInputTranscription = _onInputTranscription
+      ..onOutputTranscription = _onOutputTranscription
+      ..onTurnComplete = _onTurnComplete
+      ..onInterrupted = _onInterrupted
+      ..onSessionResumption = (handle) {
+        _sessionResumptionHandle = handle;
+      }
+      ..onGoAway = (_) {
+        if (_client == client && _sessionResumptionHandle.isNotEmpty) {
+          unawaited(_resumeLiveSession(client));
+        }
+      }
+      ..onClosed = (reason) {
+        if (_client == client &&
+            (state.active || state.phase == VoicePhase.connecting)) {
+          _teardown();
+          state = VoiceState(
+            phase: VoicePhase.error,
+            error: reason.isEmpty
+                ? 'Voice session ended unexpectedly. Check your connection and try again.'
+                : 'Voice session closed: $reason',
+          );
+        }
+      }
+      ..onError = (error) {
+        if (!ready.isCompleted) ready.completeError(error);
+      };
+  }
+
+  Future<void> _resumeLiveSession(GeminiLiveClient previous) async {
+    if (_resumeInProgress || _client != previous || !state.active) return;
+    _resumeInProgress = true;
+    try {
+      final handle = _sessionResumptionHandle;
+      if (handle.isEmpty) return;
+
+      final credentials = await _liveCredentials();
+      final settings = _ref.read(settingsProvider);
+      final systemPrompt = _ref
+          .read(llmServiceProvider)
+          .buildSystemPrompt(forVoice: true);
+      final resumed = GeminiLiveClient(
+        apiKey: credentials.apiKey,
+        accessToken: credentials.accessToken,
+        model: settings.geminiLiveModel,
+        voiceName: settings.voiceName,
+        systemInstruction: systemPrompt,
+        sessionResumptionHandle: handle,
+      );
+      final ready = Completer<void>();
+      _wireConversationClient(resumed, ready);
+      await resumed.connect();
+      await ready.future.timeout(const Duration(seconds: 12));
+
+      if (!state.active || _client != previous) {
+        await resumed.close();
+        return;
+      }
+      _client = resumed;
+      await previous.close();
+    } catch (_) {
+      // The existing connection remains active until Gemini closes it. If that
+      // happens, the normal onClosed path shows a retryable error to the user.
+    } finally {
+      _resumeInProgress = false;
+    }
+  }
+
   double _rms16(Uint8List bytes) {
     if (bytes.length < 2) return 0;
     final data = Int16List.view(
@@ -327,24 +384,12 @@ class VoiceController extends StateNotifier<VoiceState> {
   // -------------------------------------------------------------------------
 
   Future<void> _openPlayer() async {
-    if (!_playerReady) {
-      await _player.openPlayer();
-      _playerReady = true;
-    }
-    if (_player.isPlaying) {
-      await _player.stopPlayer();
-    }
-    await _player.startPlayerFromStream(
-      codec: Codec.pcm16,
-      numChannels: 1,
-      sampleRate: 24000,
-      interleaved: true,
-      bufferSize: 4096,
-    );
+    await _player.start(sampleRate: 24000);
+    _playerReady = true;
   }
 
   Future<void> _ensurePlayerStream() async {
-    if (!_playerReady || !_player.isPlaying) {
+    if (!_playerReady || !_player.isStarted) {
       await _openPlayer();
     }
   }
@@ -370,7 +415,7 @@ class VoiceController extends StateNotifier<VoiceState> {
       while (_playQueue.isNotEmpty && generation == _feedGeneration) {
         final chunk = _playQueue.removeFirst();
         await _ensurePlayerStream();
-        await _player.feedUint8FromStream(chunk);
+        await _player.write(chunk);
       }
     } catch (_) {
       // Player torn down mid-feed; drop remaining audio.
@@ -386,8 +431,7 @@ class VoiceController extends StateNotifier<VoiceState> {
     _playQueue.clear();
     _commitTranscripts();
     try {
-      await _player.stopPlayer();
-      await _openPlayer();
+      await _player.clear();
     } catch (_) {}
     if (state.active) {
       state = state.copyWith(phase: VoicePhase.listening, outputLevel: 0);
@@ -413,8 +457,6 @@ class VoiceController extends StateNotifier<VoiceState> {
 
   void _onTurnComplete() {
     _commitTranscripts();
-    _restartPlayerWhenIdle = true;
-    unawaited(_restartPlayerAfterDrain(_feedGeneration, DateTime.now()));
   }
 
   void _commitUserIfNeeded() {
@@ -483,42 +525,12 @@ class VoiceController extends StateNotifier<VoiceState> {
 
   // -------------------------------------------------------------------------
 
-  Future<void> _restartPlayerAfterDrain(
-    int generation,
-    DateTime scheduledAt,
-  ) async {
-    for (var i = 0; i < 20; i++) {
-      if (!_draining && _playQueue.isEmpty) break;
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-    }
-    await Future<void>.delayed(const Duration(milliseconds: 250));
-    if (!_restartPlayerWhenIdle ||
-        generation != _feedGeneration ||
-        _lastOutputChunk.isAfter(scheduledAt) ||
-        !mounted ||
-        !state.active ||
-        _client == null) {
-      return;
-    }
-    _restartPlayerWhenIdle = false;
-    try {
-      if (_playerReady) {
-        await _player.stopPlayer();
-      }
-      await _openPlayer();
-      if (mounted && state.active && state.phase == VoicePhase.speaking) {
-        state = state.copyWith(phase: VoicePhase.listening, outputLevel: 0);
-      }
-    } catch (_) {
-      // The next audio chunk will attempt to reopen the player stream.
-    }
-  }
-
   void _teardown() {
     _ticker?.cancel();
     _ticker = null;
     _feedGeneration++;
-    _restartPlayerWhenIdle = false;
+    _resumeInProgress = false;
+    _sessionResumptionHandle = '';
     _playQueue.clear();
     _micSub?.cancel();
     _micSub = null;
@@ -527,16 +539,15 @@ class VoiceController extends StateNotifier<VoiceState> {
     _client = null;
     unawaited(client?.close());
     if (_playerReady) {
-      unawaited(_player.stopPlayer().catchError((_) {}));
+      _playerReady = false;
+      unawaited(_player.stop().catchError((_) {}));
     }
   }
 
   @override
   void dispose() {
     _teardown();
-    if (_playerReady) {
-      unawaited(_player.closePlayer().catchError((_) {}));
-    }
+    unawaited(_player.dispose().catchError((_) {}));
     _recorder.dispose();
     super.dispose();
   }

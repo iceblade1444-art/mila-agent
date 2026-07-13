@@ -18,6 +18,7 @@ class GeminiLiveClient {
     required this.model,
     this.voiceName = 'Aoede',
     this.systemInstruction = '',
+    this.sessionResumptionHandle = '',
   });
 
   /// A direct key is supported for local development / a user's own key.
@@ -28,6 +29,7 @@ class GeminiLiveClient {
   final String model;
   final String voiceName;
   final String systemInstruction;
+  final String sessionResumptionHandle;
 
   static const _keyEndpoint =
       'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent';
@@ -45,6 +47,8 @@ class GeminiLiveClient {
   void Function(String text)? onOutputTranscription;
   void Function()? onTurnComplete;
   void Function()? onInterrupted;
+  void Function(String handle)? onSessionResumption;
+  void Function(String timeLeft)? onGoAway;
   void Function(String reason)? onClosed;
   void Function(Object error)? onError;
 
@@ -52,10 +56,14 @@ class GeminiLiveClient {
 
   Future<void> connect() async {
     if (apiKey.isEmpty && accessToken.isEmpty) {
-      throw StateError('A Gemini API key or short-lived access token is required.');
+      throw StateError(
+        'A Gemini API key or short-lived access token is required.',
+      );
     }
     final uri = accessToken.isNotEmpty
-        ? Uri.parse('$_tokenEndpoint?access_token=${Uri.encodeQueryComponent(accessToken)}')
+        ? Uri.parse(
+            '$_tokenEndpoint?access_token=${Uri.encodeQueryComponent(accessToken)}',
+          )
         : Uri.parse('$_keyEndpoint?key=${Uri.encodeQueryComponent(apiKey)}');
     final channel = WebSocketChannel.connect(uri);
     _channel = channel;
@@ -93,6 +101,11 @@ class GeminiLiveClient {
           },
         'inputAudioTranscription': <String, dynamic>{},
         'outputAudioTranscription': <String, dynamic>{},
+        'contextWindowCompression': {'slidingWindow': <String, dynamic>{}},
+        'sessionResumption': {
+          if (sessionResumptionHandle.isNotEmpty)
+            'handle': sessionResumptionHandle,
+        },
       },
     });
   }
@@ -114,17 +127,7 @@ class GeminiLiveClient {
   void sendText(String text) {
     if (!isConnected) return;
     _send({
-      'clientContent': {
-        'turns': [
-          {
-            'role': 'user',
-            'parts': [
-              {'text': text},
-            ],
-          },
-        ],
-        'turnComplete': true,
-      },
+      'realtimeInput': {'text': text},
     });
   }
 
@@ -186,8 +189,17 @@ class GeminiLiveClient {
       }
     }
 
+    final resumption = msg['sessionResumptionUpdate'] as Map<String, dynamic>?;
+    final handle = resumption?['newHandle'] as String?;
+    if (resumption?['resumable'] == true &&
+        handle != null &&
+        handle.isNotEmpty) {
+      onSessionResumption?.call(handle);
+    }
+
     if (msg.containsKey('goAway')) {
-      onClosed?.call('Server requested disconnect');
+      final goAway = msg['goAway'] as Map<String, dynamic>?;
+      onGoAway?.call(goAway?['timeLeft']?.toString() ?? '');
     }
   }
 

@@ -2,7 +2,7 @@ name: mila
 description: "MILA - AI Voice Assistant. Real-time voice and text intelligence via Gemini."
 publish_to: 'none'
 
-version: 1.0.1+2
+version: 1.0.2+3
 
 environment:
   sdk: ^3.11.5
@@ -23,7 +23,6 @@ dependencies:
   # Voice pipeline (Gemini Live API)
   web_socket_channel: ^3.0.1
   record: ^6.0.0
-  flutter_sound: ^9.16.3
   permission_handler: ^11.3.1
 
   # Networking
