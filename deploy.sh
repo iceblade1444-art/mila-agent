@@ -12,7 +12,13 @@ mkdir -p backend/data downloads
 
 git pull --ff-only
 
-sudo docker compose up -d --build
+if docker ps >/dev/null 2>&1; then
+  DOCKER="docker"
+else
+  DOCKER="sudo docker"
+fi
+
+$DOCKER compose up -d --build
 
 curl -fsS http://127.0.0.1:8787/health
 echo
