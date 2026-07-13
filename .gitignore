@@ -58,3 +58,4 @@ backend/data/
 
 # Server deployment artifacts
 downloads/
+dist/
