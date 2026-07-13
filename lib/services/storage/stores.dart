@@ -1,0 +1,269 @@
+import 'dart:convert';
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+
+import '../../data/models.dart';
+
+/// Single Hive box holding JSON-encoded app data (no codegen needed).
+class LocalStore {
+  LocalStore(this._box);
+
+  final Box<String> _box;
+
+  static Future<LocalStore> open() async {
+    await Hive.initFlutter();
+    final box = await Hive.openBox<String>('mila');
+    return LocalStore(box);
+  }
+
+  List<Map<String, dynamic>> readList(String key) {
+    final raw = _box.get(key);
+    if (raw == null) return [];
+    try {
+      return (jsonDecode(raw) as List)
+          .map((e) => (e as Map).cast<String, dynamic>())
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Map<String, dynamic>? readMap(String key) {
+    final raw = _box.get(key);
+    if (raw == null) return null;
+    try {
+      return (jsonDecode(raw) as Map).cast<String, dynamic>();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> writeJson(String key, Object value) =>
+      _box.put(key, jsonEncode(value));
+
+  Future<void> delete(String key) => _box.delete(key);
+}
+
+/// API keys live in the platform keystore/keychain, never in plain storage.
+class SecureStore {
+  SecureStore()
+    : _storage = const FlutterSecureStorage(
+        aOptions: AndroidOptions(encryptedSharedPreferences: true),
+      );
+
+  final FlutterSecureStorage _storage;
+
+  static const openAiKey = 'openai_api_key';
+  static const milaBackendUrl = 'mila_backend_url';
+  static const openAiAccountToken = 'openai_account_token';
+  static const openAiAccountLabel = 'openai_account_label';
+  static const geminiKey = 'gemini_api_key';
+  static const anthropicKey = 'anthropic_api_key';
+  static const integrationConfigs = 'integration_configs';
+
+  Future<String?> read(String key) => _storage.read(key: key);
+
+  Future<void> write(String key, String value) => value.trim().isEmpty
+      ? _storage.delete(key: key)
+      : _storage.write(key: key, value: value.trim());
+}
+
+// ---------------------------------------------------------------------------
+// Riverpod wiring
+// ---------------------------------------------------------------------------
+
+/// Overridden in main() after async init.
+final localStoreProvider = Provider<LocalStore>(
+  (ref) => throw UnimplementedError(),
+);
+
+final secureStoreProvider = Provider<SecureStore>((ref) => SecureStore());
+
+class SettingsController extends StateNotifier<AppSettings> {
+  SettingsController(this._store)
+    : super(
+        _store.readMap('settings') != null
+            ? AppSettings.fromJson(_store.readMap('settings')!)
+            : const AppSettings(),
+      );
+
+  final LocalStore _store;
+
+  void update(AppSettings Function(AppSettings) fn) {
+    state = fn(state);
+    _store.writeJson('settings', state.toJson());
+  }
+}
+
+final settingsProvider = StateNotifierProvider<SettingsController, AppSettings>(
+  (ref) => SettingsController(ref.watch(localStoreProvider)),
+);
+
+class ProfileController extends StateNotifier<UserProfile> {
+  ProfileController(this._store)
+    : super(
+        _store.readMap('profile') != null
+            ? UserProfile.fromJson(_store.readMap('profile')!)
+            : const UserProfile(),
+      );
+
+  final LocalStore _store;
+
+  void save(UserProfile profile) {
+    state = profile;
+    _store.writeJson('profile', profile.toJson());
+  }
+
+  void signOut() => save(state.copyWith(signedIn: false));
+}
+
+final profileProvider = StateNotifierProvider<ProfileController, UserProfile>(
+  (ref) => ProfileController(ref.watch(localStoreProvider)),
+);
+
+class ChatController extends StateNotifier<List<ChatMessage>> {
+  ChatController(this._store)
+    : super(_store.readList('chat').map(ChatMessage.fromJson).toList());
+
+  final LocalStore _store;
+
+  void _persist() =>
+      _store.writeJson('chat', state.map((m) => m.toJson()).toList());
+
+  void add(ChatMessage message) {
+    state = [...state, message];
+    _persist();
+  }
+
+  /// Append streamed tokens to an existing assistant message.
+  void appendText(String id, String delta) {
+    state = [
+      for (final m in state)
+        if (m.id == id)
+          (ChatMessage(
+            id: m.id,
+            role: m.role,
+            text: m.text + delta,
+            createdAt: m.createdAt,
+            actions: m.actions,
+            viaVoice: m.viaVoice,
+          ))
+        else
+          m,
+    ];
+    _persist();
+  }
+
+  void replace(ChatMessage message) {
+    state = [for (final m in state) m.id == message.id ? message : m];
+    _persist();
+  }
+
+  void setActionStatus(String messageId, String actionId, ActionStatus status) {
+    for (final m in state) {
+      if (m.id == messageId) {
+        for (final a in m.actions) {
+          if (a.id == actionId) a.status = status;
+        }
+      }
+    }
+    state = [...state];
+    _persist();
+  }
+
+  void clear() {
+    state = [];
+    _persist();
+  }
+}
+
+final chatProvider = StateNotifierProvider<ChatController, List<ChatMessage>>(
+  (ref) => ChatController(ref.watch(localStoreProvider)),
+);
+
+class TasksController extends StateNotifier<List<TaskItem>> {
+  TasksController(this._store)
+    : super(_store.readList('tasks').map(TaskItem.fromJson).toList());
+
+  final LocalStore _store;
+
+  void _persist() =>
+      _store.writeJson('tasks', state.map((t) => t.toJson()).toList());
+
+  void add(TaskItem task) {
+    state = [task, ...state];
+    _persist();
+  }
+
+  void toggle(String id, bool enabled) {
+    state = [
+      for (final t in state)
+        if (t.id == id) (t..enabled = enabled) else t,
+    ];
+    _persist();
+  }
+
+  void setDone(String id, bool done) {
+    state = [
+      for (final t in state)
+        if (t.id == id) (t..done = done) else t,
+    ];
+    _persist();
+  }
+
+  void remove(String id) {
+    state = state.where((t) => t.id != id).toList();
+    _persist();
+  }
+}
+
+final tasksProvider = StateNotifierProvider<TasksController, List<TaskItem>>(
+  (ref) => TasksController(ref.watch(localStoreProvider)),
+);
+
+class MemoryController extends StateNotifier<List<MemoryItem>> {
+  MemoryController(this._store)
+    : super(_store.readList('memories').map(MemoryItem.fromJson).toList());
+
+  final LocalStore _store;
+
+  void _persist() =>
+      _store.writeJson('memories', state.map((m) => m.toJson()).toList());
+
+  void add(MemoryItem item) {
+    final normalized = item.text.trim().toLowerCase();
+    if (state.any((m) => m.text.trim().toLowerCase() == normalized)) return;
+    state = [item, ...state];
+    _persist();
+  }
+
+  void remove(String id) {
+    state = state.where((m) => m.id != id).toList();
+    _persist();
+  }
+}
+
+final memoriesProvider =
+    StateNotifierProvider<MemoryController, List<MemoryItem>>(
+      (ref) => MemoryController(ref.watch(localStoreProvider)),
+    );
+
+/// Integration connection flags (UI-level; real OAuth flows are backend work).
+class IntegrationsController extends StateNotifier<Map<String, bool>> {
+  IntegrationsController(this._store)
+    : super((_store.readMap('integrations') ?? {}).cast<String, bool>());
+
+  final LocalStore _store;
+
+  void toggle(String name) {
+    state = {...state, name: !(state[name] ?? false)};
+    _store.writeJson('integrations', state);
+  }
+}
+
+final integrationsProvider =
+    StateNotifierProvider<IntegrationsController, Map<String, bool>>(
+      (ref) => IntegrationsController(ref.watch(localStoreProvider)),
+    );

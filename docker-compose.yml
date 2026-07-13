@@ -1,0 +1,11 @@
+services:
+  mila-backend:
+    build: ./backend
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./backend/data:/app/data
+      - ./downloads:/app/downloads
