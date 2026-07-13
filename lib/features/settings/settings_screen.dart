@@ -358,7 +358,8 @@ class SettingsScreen extends ConsumerWidget {
               onTap: () => showAboutDialog(
                 context: context,
                 applicationName: 'MILA',
-                applicationVersion: '1.0.0',
+                applicationVersion:
+                    '${UpdateService.currentVersion}+${UpdateService.currentVersionCode}',
                 applicationLegalese:
                     'AI Voice Assistant.\nVoice: Gemini Live API · Text: Gemini.',
               ),

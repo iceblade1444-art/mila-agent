@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/config/app_config.dart';
 import '../../core/theme/mila_theme.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models.dart';
@@ -45,11 +46,9 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
   Future<void> _load() async {
     final secure = ref.read(secureStoreProvider);
     final settings = ref.read(settingsProvider);
-    const backendUrl = String.fromEnvironment('MILA_BACKEND_URL');
-    const legacyBackendUrl = String.fromEnvironment('MILA_OPENAI_ACCOUNT_URL');
-    _serverUrl.text =
-        await secure.read(SecureStore.milaBackendUrl) ??
-        (backendUrl.isNotEmpty ? backendUrl : legacyBackendUrl);
+    _serverUrl.text = AppConfig.configuredBackendUrl(
+      await secure.read(SecureStore.milaBackendUrl),
+    );
     _geminiKey.text = await secure.read(SecureStore.geminiKey) ?? '';
     _geminiModel.text = settings.geminiModel;
     _liveModel.text = settings.geminiLiveModel;

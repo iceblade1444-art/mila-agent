@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:record/record.dart';
 
+import '../../core/config/app_config.dart';
 import '../../data/models.dart';
 import '../llm/llm_service.dart';
 import '../storage/stores.dart';
@@ -76,6 +77,7 @@ class VoiceController extends StateNotifier<VoiceState> {
   final Queue<Uint8List> _playQueue = Queue();
   bool _draining = false;
   int _feedGeneration = 0; // bumped on interruption to drop stale audio
+  bool _restartPlayerWhenIdle = false;
 
   String _userText = '';
   String _assistantText = '';
@@ -253,11 +255,9 @@ class VoiceController extends StateNotifier<VoiceState> {
 
   Future<({String apiKey, String accessToken})> _liveCredentials() async {
     final secure = _ref.read(secureStoreProvider);
-    const backendUrlDefine = String.fromEnvironment('MILA_BACKEND_URL');
-    const legacyBackendUrl = String.fromEnvironment('MILA_OPENAI_ACCOUNT_URL');
-    final backendUrl =
-        await secure.read(SecureStore.milaBackendUrl) ??
-        (backendUrlDefine.isNotEmpty ? backendUrlDefine : legacyBackendUrl);
+    final backendUrl = AppConfig.configuredBackendUrl(
+      await secure.read(SecureStore.milaBackendUrl),
+    );
     final sessionToken =
         await secure.read(SecureStore.openAiAccountToken) ?? '';
     final apiKey =
@@ -413,6 +413,8 @@ class VoiceController extends StateNotifier<VoiceState> {
 
   void _onTurnComplete() {
     _commitTranscripts();
+    _restartPlayerWhenIdle = true;
+    unawaited(_restartPlayerAfterDrain(_feedGeneration, DateTime.now()));
   }
 
   void _commitUserIfNeeded() {
@@ -481,10 +483,42 @@ class VoiceController extends StateNotifier<VoiceState> {
 
   // -------------------------------------------------------------------------
 
+  Future<void> _restartPlayerAfterDrain(
+    int generation,
+    DateTime scheduledAt,
+  ) async {
+    for (var i = 0; i < 20; i++) {
+      if (!_draining && _playQueue.isEmpty) break;
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    if (!_restartPlayerWhenIdle ||
+        generation != _feedGeneration ||
+        _lastOutputChunk.isAfter(scheduledAt) ||
+        !mounted ||
+        !state.active ||
+        _client == null) {
+      return;
+    }
+    _restartPlayerWhenIdle = false;
+    try {
+      if (_playerReady) {
+        await _player.stopPlayer();
+      }
+      await _openPlayer();
+      if (mounted && state.active && state.phase == VoicePhase.speaking) {
+        state = state.copyWith(phase: VoicePhase.listening, outputLevel: 0);
+      }
+    } catch (_) {
+      // The next audio chunk will attempt to reopen the player stream.
+    }
+  }
+
   void _teardown() {
     _ticker?.cancel();
     _ticker = null;
     _feedGeneration++;
+    _restartPlayerWhenIdle = false;
     _playQueue.clear();
     _micSub?.cancel();
     _micSub = null;

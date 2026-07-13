@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
+import '../../core/config/app_config.dart';
 import '../storage/stores.dart';
 
 class AppUpdateInfo {
@@ -38,22 +39,20 @@ class UpdateService {
 
   static const currentVersion = String.fromEnvironment(
     'APP_VERSION',
-    defaultValue: '1.0.0',
+    defaultValue: '1.0.1',
   );
   static const currentVersionCode = int.fromEnvironment(
     'APP_VERSION_CODE',
-    defaultValue: 1,
+    defaultValue: 2,
   );
 
   final Ref _ref;
 
   Future<AppUpdateInfo> check() async {
     final secure = _ref.read(secureStoreProvider);
-    const backendUrl = String.fromEnvironment('MILA_BACKEND_URL');
-    const legacyBackendUrl = String.fromEnvironment('MILA_OPENAI_ACCOUNT_URL');
-    final baseUrl =
-        await secure.read(SecureStore.milaBackendUrl) ??
-        (backendUrl.isNotEmpty ? backendUrl : legacyBackendUrl);
+    final baseUrl = AppConfig.configuredBackendUrl(
+      await secure.read(SecureStore.milaBackendUrl),
+    );
     if (baseUrl.trim().isEmpty) {
       throw const FormatException('MILA server URL is not configured.');
     }
