@@ -10,6 +10,14 @@ fi
 
 mkdir -p backend/data downloads
 
+BIND_ADDRESS="$(sed -n 's/^BIND_ADDRESS=//p' backend/.env | tail -n1)"
+HOST_PORT="$(sed -n 's/^HOST_PORT=//p' backend/.env | tail -n1)"
+BIND_ADDRESS="${BIND_ADDRESS:-127.0.0.1}"
+HOST_PORT="${HOST_PORT:-8791}"
+export BIND_ADDRESS HOST_PORT
+HEALTH_HOST="$BIND_ADDRESS"
+[ "$HEALTH_HOST" = "0.0.0.0" ] && HEALTH_HOST="127.0.0.1"
+
 git pull --ff-only
 
 if docker ps >/dev/null 2>&1; then
@@ -22,7 +30,7 @@ $DOCKER compose up -d --build
 
 set +e
 for attempt in {1..20}; do
-  health_response="$(curl -fsS http://127.0.0.1:8787/health 2>/dev/null)"
+  health_response="$(curl -fsS "http://${HEALTH_HOST}:${HOST_PORT}/health" 2>/dev/null)"
   health_status=$?
   if [ "$health_status" -eq 0 ]; then
     echo "$health_response"

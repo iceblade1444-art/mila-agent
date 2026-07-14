@@ -66,7 +66,9 @@ In the app: **Settings → AI Providers**:
 - **Gemini API key** (required for real-time voice; also usable for text) — from
   [Google AI Studio](https://aistudio.google.com/apikey)
 - **MILA server URL** — your backend domain, for example
-  `https://agent.milanapremium.uz`, used for updates and downloads.
+  `https://agent.milanapremium.uz/mila`, used for secure voice sessions,
+  updates and downloads. Agentic OS issues the one-time mobile connection code
+  from **Integrations → MILA Voice**.
 
 Keys are stored in the Android Keystore / iOS Keychain.
 You can bake Gemini defaults in at build time (secure storage still overrides
@@ -74,7 +76,7 @@ them):
 
 ```bash
 flutter build apk --release \
-  --dart-define=MILA_BACKEND_URL=https://agent.milanapremium.uz \
+  --dart-define=MILA_BACKEND_URL=https://agent.milanapremium.uz/mila \
   --dart-define=APP_VERSION=1.1.0 \
   --dart-define=APP_VERSION_CODE=5
 ```

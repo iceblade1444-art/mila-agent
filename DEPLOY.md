@@ -37,7 +37,7 @@ Build a release APK locally:
 
 ```powershell
 cd "C:\AI Agent\mila"
-& "C:\FlutterSDK\bin\flutter.bat" build apk --release --dart-define=MILA_BACKEND_URL=https://agent.milanapremium.uz
+& "C:\FlutterSDK\bin\flutter.bat" build apk --release --dart-define=MILA_BACKEND_URL=https://agent.milanapremium.uz/mila
 ```
 
 Upload the APK to:

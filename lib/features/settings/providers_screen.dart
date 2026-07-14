@@ -5,6 +5,7 @@ import '../../core/config/app_config.dart';
 import '../../core/theme/mila_theme.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models.dart';
+import '../../services/auth/mila_account_service.dart';
 import '../../services/soul/soul_service.dart';
 import '../../services/storage/stores.dart';
 import '../../services/voice/voice_controller.dart';
@@ -20,12 +21,14 @@ class ProvidersScreen extends ConsumerStatefulWidget {
 
 class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
   final _serverUrl = TextEditingController();
+  final _connectionCode = TextEditingController();
   final _geminiKey = TextEditingController();
   final _geminiModel = TextEditingController();
   final _liveModel = TextEditingController();
 
   bool _loaded = false;
   bool _showGeminiKey = false;
+  String _accountLabel = '';
 
   @override
   void initState() {
@@ -42,9 +45,8 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
     _geminiKey.text = await secure.read(SecureStore.geminiKey) ?? '';
     _geminiModel.text = settings.geminiModel;
     _liveModel.text = settings.geminiLiveModel;
-
-    await secure.write(SecureStore.openAiAccountToken, '');
-    await secure.write(SecureStore.openAiAccountLabel, '');
+    _accountLabel =
+        await secure.read(SecureStore.openAiAccountLabel) ?? '';
     await secure.write(SecureStore.openAiKey, '');
     if (settings.provider != LlmProviderKind.gemini) {
       ref
@@ -55,6 +57,39 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
     if (mounted) {
       setState(() => _loaded = true);
     }
+  }
+
+  Future<void> _connectMilaAccount() async {
+    try {
+      final session = await const MilaAccountService().exchangeCode(
+        baseUrl: _serverUrl.text,
+        code: _connectionCode.text,
+      );
+      final secure = ref.read(secureStoreProvider);
+      await secure.write(SecureStore.milaBackendUrl, _serverUrl.text);
+      await secure.write(SecureStore.openAiAccountToken, session.token);
+      await secure.write(SecureStore.openAiAccountLabel, session.label);
+      if (!mounted) return;
+      setState(() {
+        _accountLabel = session.label;
+        _connectionCode.clear();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Connected as ${session.label}.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.toString().replaceFirst('FormatException: ', ''))),
+      );
+    }
+  }
+
+  Future<void> _disconnectMilaAccount() async {
+    final secure = ref.read(secureStoreProvider);
+    await secure.write(SecureStore.openAiAccountToken, '');
+    await secure.write(SecureStore.openAiAccountLabel, '');
+    if (mounted) setState(() => _accountLabel = '');
   }
 
   Future<void> _previewVoice(String voice) async {
@@ -73,8 +108,6 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
     final secure = ref.read(secureStoreProvider);
     await secure.write(SecureStore.milaBackendUrl, _serverUrl.text.trim());
     await secure.write(SecureStore.geminiKey, _geminiKey.text.trim());
-    await secure.write(SecureStore.openAiAccountToken, '');
-    await secure.write(SecureStore.openAiAccountLabel, '');
     await secure.write(SecureStore.openAiKey, '');
     ref
         .read(settingsProvider.notifier)
@@ -100,6 +133,7 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
   @override
   void dispose() {
     _serverUrl.dispose();
+    _connectionCode.dispose();
     _geminiKey.dispose();
     _geminiModel.dispose();
     _liveModel.dispose();
@@ -254,6 +288,67 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
                     keyboardType: TextInputType.url,
                     decoration: const InputDecoration(
                       hintText: 'https://agent.milanapremium.uz',
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  GlassCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              _accountLabel.isNotEmpty
+                                  ? Icons.verified_user_outlined
+                                  : Icons.link_outlined,
+                              color: _accountLabel.isNotEmpty
+                                  ? MilaColors.success
+                                  : MilaColors.textTertiary,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                _accountLabel.isNotEmpty
+                                    ? 'Connected as $_accountLabel'
+                                    : 'Connect to Agentic OS',
+                                style: text.titleSmall,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _accountLabel.isNotEmpty
+                              ? 'Voice uses a short-lived server token; the Gemini key stays on the server.'
+                              : 'Create a one-time code in Agentic OS → Integrations → MILA.',
+                          style: text.bodySmall,
+                        ),
+                        const SizedBox(height: 12),
+                        if (_accountLabel.isEmpty) ...[
+                          TextField(
+                            controller: _connectionCode,
+                            autocorrect: false,
+                            enableSuggestions: false,
+                            textCapitalization: TextCapitalization.characters,
+                            maxLength: 8,
+                            decoration: const InputDecoration(
+                              hintText: '8-character code',
+                              counterText: '',
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          FilledButton.icon(
+                            onPressed: _connectMilaAccount,
+                            icon: const Icon(Icons.link),
+                            label: const Text('Connect MILA account'),
+                          ),
+                        ] else
+                          TextButton.icon(
+                            onPressed: _disconnectMilaAccount,
+                            icon: const Icon(Icons.link_off),
+                            label: const Text('Disconnect account'),
+                          ),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 24),

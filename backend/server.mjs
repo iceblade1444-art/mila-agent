@@ -92,6 +92,35 @@ export function createMilaServer(options = {}) {
         return;
       }
 
+      if (req.method === 'GET' && url.pathname === '/admin/status') {
+        if (!hasAdminAccess(req)) {
+          sendJson(res, 403, {error: 'Admin token required'});
+          return;
+        }
+        sendJson(res, 200, {
+          ok: true,
+          voiceConfigured: Boolean(cfg.geminiApiKey),
+          chatConfigured: Boolean(cfg.openAiApiKey),
+          accountConnectionsEnabled: cfg.enableOpenAiAccount,
+          subscriptionRequired: cfg.requireActiveSubscription,
+          liveModel: cfg.geminiLiveModel,
+          chatModel: cfg.defaultModel,
+        });
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/admin/connection-code') {
+        if (!hasAdminAccess(req)) {
+          sendJson(res, 403, {error: 'Admin token required'});
+          return;
+        }
+        const body = await readJson(req);
+        const label = String(body.label || '').trim() || 'MILA user';
+        const code = createCode(label);
+        sendJson(res, 200, {ok: true, code, label, expiresInSeconds: 600});
+        return;
+      }
+
       if (req.method === 'GET' && url.pathname.startsWith('/downloads/')) {
         await sendDownload(res, url.pathname, cfg);
         return;
@@ -155,11 +184,11 @@ export function createMilaServer(options = {}) {
         }
       }
 
-      if (req.method === 'POST' && url.pathname === '/auth/openai/device') {
-        if (!cfg.enableOpenAiAccount) {
-          sendJson(res, 404, {error: 'Not found'});
-          return;
-        }
+      if (
+        req.method === 'POST' &&
+        (url.pathname === '/v1/auth/device' ||
+          url.pathname === '/auth/openai/device')
+      ) {
         const body = await readJson(req);
         const code = String(body.code || '').trim().toUpperCase();
         const record = db.getCode(code);

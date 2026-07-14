@@ -3,7 +3,7 @@ services:
     build: ./backend
     restart: unless-stopped
     ports:
-      - "8787:8787"
+      - "${BIND_ADDRESS:-127.0.0.1}:${HOST_PORT:-8791}:8787"
     env_file:
       - ./backend/.env
     volumes:

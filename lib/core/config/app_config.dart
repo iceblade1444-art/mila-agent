@@ -1,7 +1,7 @@
 class AppConfig {
   const AppConfig._();
 
-  static const defaultBackendUrl = 'https://agent.milanapremium.uz';
+  static const defaultBackendUrl = 'https://agent.milanapremium.uz/mila';
 
   static const backendUrl = String.fromEnvironment(
     'MILA_BACKEND_URL',

@@ -35,6 +35,67 @@ test('health endpoint returns ok', async () => {
   });
 });
 
+test('admin status reports capabilities without exposing secrets', async () => {
+  await withServer(
+    {
+      config: {
+        adminToken: 'admin-secret',
+        geminiApiKey: 'gemini-secret',
+        openAiApiKey: '',
+      },
+    },
+    async (baseUrl) => {
+      const denied = await fetch(`${baseUrl}/admin/status`);
+      assert.equal(denied.status, 403);
+
+      const response = await fetch(`${baseUrl}/admin/status`, {
+        headers: {'X-Admin-Token': 'admin-secret'},
+      });
+      assert.equal(response.status, 200);
+      const json = await response.json();
+      assert.equal(json.voiceConfigured, true);
+      assert.equal(json.chatConfigured, false);
+      assert.equal(JSON.stringify(json).includes('gemini-secret'), false);
+    },
+  );
+});
+
+test('admin can issue a one-time MILA connection code', async () => {
+  await withServer(
+    {config: {adminToken: 'admin-secret', enableOpenAiAccount: false}},
+    async (baseUrl) => {
+      const issued = await fetch(`${baseUrl}/admin/connection-code`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Token': 'admin-secret',
+        },
+        body: JSON.stringify({label: 'Mila mobile'}),
+      });
+      assert.equal(issued.status, 200);
+      const {code} = await issued.json();
+      assert.match(code, /^[A-F0-9]{8}$/);
+
+      const exchange = await fetch(`${baseUrl}/v1/auth/device`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({code}),
+      });
+      assert.equal(exchange.status, 200);
+      const session = await exchange.json();
+      assert.equal(session.label, 'Mila mobile');
+      assert.ok(session.token.length > 20);
+
+      const reused = await fetch(`${baseUrl}/v1/auth/device`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({code}),
+      });
+      assert.equal(reused.status, 400);
+    },
+  );
+});
+
 test('app update metadata can be saved and checked', async () => {
   await withServer(
     {config: {adminToken: 'secret'}},

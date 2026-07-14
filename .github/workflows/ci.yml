@@ -1,0 +1,36 @@
+name: MILA CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install --prefix backend
+      - run: npm test --prefix backend
+
+  flutter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart format --output=none --set-exit-if-changed lib test
+      - run: flutter test
+      - run: flutter build apk --release --dart-define=MILA_BACKEND_URL=https://agent.milanapremium.uz/mila
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mila-android-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
