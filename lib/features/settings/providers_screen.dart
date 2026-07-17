@@ -5,6 +5,7 @@ import '../../core/config/app_config.dart';
 import '../../core/theme/mila_theme.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models.dart';
+import '../../services/agentic/agentic_os_service.dart';
 import '../../services/auth/mila_account_service.dart';
 import '../../services/soul/soul_service.dart';
 import '../../services/storage/stores.dart';
@@ -45,8 +46,7 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
     _geminiKey.text = await secure.read(SecureStore.geminiKey) ?? '';
     _geminiModel.text = settings.geminiModel;
     _liveModel.text = settings.geminiLiveModel;
-    _accountLabel =
-        await secure.read(SecureStore.openAiAccountLabel) ?? '';
+    _accountLabel = await secure.read(SecureStore.openAiAccountLabel) ?? '';
     await secure.write(SecureStore.openAiKey, '');
     if (settings.provider != LlmProviderKind.gemini) {
       ref
@@ -74,13 +74,17 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
         _accountLabel = session.label;
         _connectionCode.clear();
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Connected as ${session.label}.')),
-      );
+      await ref.read(agenticTasksProvider.notifier).refresh();
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Connected as ${session.label}.')));
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.toString().replaceFirst('FormatException: ', ''))),
+        SnackBar(
+          content: Text(error.toString().replaceFirst('FormatException: ', '')),
+        ),
       );
     }
   }
@@ -89,6 +93,7 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
     final secure = ref.read(secureStoreProvider);
     await secure.write(SecureStore.openAiAccountToken, '');
     await secure.write(SecureStore.openAiAccountLabel, '');
+    await ref.read(agenticTasksProvider.notifier).refresh();
     if (mounted) setState(() => _accountLabel = '');
   }
 

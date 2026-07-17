@@ -254,6 +254,19 @@ class MemoryController extends StateNotifier<List<MemoryItem>> {
     state = state.where((m) => m.id != id).toList();
     _persist();
   }
+
+  void mergeRemote(List<MemoryItem> remote) {
+    final remoteText = remote
+        .map((item) => item.text.trim().toLowerCase())
+        .toSet();
+    state = [
+      ...remote,
+      ...state.where(
+        (item) => !remoteText.contains(item.text.trim().toLowerCase()),
+      ),
+    ];
+    _persist();
+  }
 }
 
 final memoriesProvider =

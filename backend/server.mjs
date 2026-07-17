@@ -23,6 +23,8 @@ const config = {
   dbPath: process.env.DB_PATH || path.join(dirname, 'data', 'mila.db'),
   downloadsDir: process.env.DOWNLOADS_DIR || path.join(dirname, 'downloads'),
   adminToken: process.env.ADMIN_TOKEN || '',
+  agenticOsUrl: (process.env.AGENTIC_OS_URL || '').replace(/\/$/, ''),
+  agenticOsToken: process.env.AGENTIC_OS_TOKEN || '',
   enableOpenAiAccount: process.env.ENABLE_OPENAI_ACCOUNT === 'true',
   requireActiveSubscription: process.env.REQUIRE_ACTIVE_SUBSCRIPTION === 'true',
 };
@@ -37,7 +39,7 @@ export function createMilaServer(options = {}) {
     res.writeHead(status, {
       'Access-Control-Allow-Origin': cfg.allowedOrigin,
       'Access-Control-Allow-Headers': 'authorization,content-type',
-      'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+      'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
       'Content-Type': typeof body === 'string'
           ? 'text/html; charset=utf-8'
           : 'application/json; charset=utf-8',
@@ -76,6 +78,75 @@ export function createMilaServer(options = {}) {
   function hasAdminAccess(req) {
     if (!cfg.adminToken) return false;
     return req.headers['x-admin-token'] === cfg.adminToken;
+  }
+
+  async function agenticRequest(pathname, options = {}) {
+    if (!cfg.agenticOsUrl || !cfg.agenticOsToken) {
+      const error = new Error('Agentic OS is not configured');
+      error.status = 503;
+      throw error;
+    }
+    const response = await fetchImpl(`${cfg.agenticOsUrl}${pathname}`, {
+      method: options.method || 'GET',
+      headers: {
+        Authorization: `Bearer ${cfg.agenticOsToken}`,
+        ...(options.body ? {'Content-Type': 'application/json'} : {}),
+      },
+      body: options.body ? JSON.stringify(options.body) : undefined,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(data.error || `Agentic OS HTTP ${response.status}`);
+      error.status = response.status;
+      throw error;
+    }
+    return data;
+  }
+
+  function requireSession(req, res) {
+    const session = getSession(req);
+    if (!session) {
+      sendJson(res, 401, {error: 'Missing or expired MILA session'});
+      return null;
+    }
+    return session;
+  }
+
+  function memoryPath(session) {
+    const owner = crypto
+      .createHash('sha256')
+      .update(session.label)
+      .digest('hex')
+      .slice(0, 20);
+    return `MILA/mobile-${owner}.md`;
+  }
+
+  async function readMobileMemory(session) {
+    const notePath = memoryPath(session);
+    const notes = await agenticRequest(
+      `/api/knowledge/notes?q=${encodeURIComponent(notePath)}`,
+    );
+    const note = Array.isArray(notes)
+      ? notes.find((item) => item.path === notePath)
+      : null;
+    if (!note) return {path: notePath, content: '', items: []};
+    const record = await agenticRequest(
+      `/api/knowledge/notes/read?path=${encodeURIComponent(notePath)}`,
+    );
+    const indexed = new Map();
+    for (const rawLine of String(record.content || '').split(/\r?\n/)) {
+      const line = rawLine.trim();
+      const match = /^- \[(people|preferences|facts)\] (.+)$/.exec(line);
+      if (match) {
+        const id = crypto.createHash('sha256').update(line).digest('hex').slice(0, 16);
+        indexed.set(id, {id, category: match[1], text: match[2]});
+        continue;
+      }
+      const deleted = /^- \[deleted\] ([a-f0-9]{16})$/.exec(line);
+      if (deleted) indexed.delete(deleted[1]);
+    }
+    const items = [...indexed.values()];
+    return {path: notePath, content: String(record.content || ''), items};
   }
 
   const server = http.createServer(async (req, res) => {
@@ -203,6 +274,168 @@ export function createMilaServer(options = {}) {
         return;
       }
 
+      if (req.method === 'GET' && url.pathname === '/v1/agentic/status') {
+        const session = requireSession(req, res);
+        if (!session) return;
+        const [profiles, orchestration] = await Promise.all([
+          agenticRequest('/api/kanban/profiles'),
+          agenticRequest('/api/kanban/orchestration'),
+        ]);
+        sendJson(res, 200, {
+          ok: true,
+          connected: true,
+          label: session.label,
+          profiles: profiles.profiles || [],
+          orchestration,
+        });
+        return;
+      }
+
+      if (req.method === 'GET' && url.pathname === '/v1/tasks') {
+        if (!requireSession(req, res)) return;
+        const board = await agenticRequest('/api/kanban/board');
+        const tasks = (board.columns || []).flatMap((column) =>
+          (column.tasks || []).map((task) => ({
+            ...task,
+            status: task.status || column.name,
+          })),
+        );
+        sendJson(res, 200, {tasks, syncedAt: Date.now()});
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/v1/tasks') {
+        const session = requireSession(req, res);
+        if (!session) return;
+        const body = await readJson(req);
+        const title = String(body.title || '').trim().slice(0, 240);
+        if (!title) {
+          sendJson(res, 400, {error: 'Task title is required'});
+          return;
+        }
+        const created = await agenticRequest('/api/kanban/tasks', {
+          method: 'POST',
+          body: {
+            title,
+            body: String(body.body || body.subtitle || '').trim().slice(0, 20000),
+            initialStatus: body.initialStatus === 'ready' ? 'ready' : 'triage',
+            assignee: String(body.assignee || 'default').trim().slice(0, 64),
+            priority: Math.max(0, Math.min(3, Number(body.priority) || 0)),
+          },
+        });
+        await agenticRequest('/api/kanban/dispatch', {
+          method: 'POST',
+          body: {},
+        }).catch(() => {});
+        sendJson(res, 201, {...created, requestedBy: session.label});
+        return;
+      }
+
+      const taskMatch = /^\/v1\/tasks\/(t_[a-zA-Z0-9]+)$/.exec(url.pathname);
+      if (taskMatch && req.method === 'GET') {
+        if (!requireSession(req, res)) return;
+        sendJson(
+          res,
+          200,
+          await agenticRequest(`/api/kanban/tasks/${taskMatch[1]}`),
+        );
+        return;
+      }
+
+      if (taskMatch && req.method === 'PATCH') {
+        if (!requireSession(req, res)) return;
+        const body = await readJson(req);
+        const patch = {};
+        if (['ready', 'blocked', 'review', 'done', 'archived'].includes(body.status)) {
+          patch.status = body.status;
+        }
+        if (body.blockReason !== undefined) {
+          patch.block_reason = String(body.blockReason).trim().slice(0, 2000);
+        }
+        if (!Object.keys(patch).length) {
+          sendJson(res, 400, {error: 'No supported task update'});
+          return;
+        }
+        sendJson(
+          res,
+          200,
+          await agenticRequest(`/api/kanban/tasks/${taskMatch[1]}`, {
+            method: 'PATCH',
+            body: patch,
+          }),
+        );
+        return;
+      }
+
+      if (req.method === 'GET' && url.pathname === '/v1/memory') {
+        const session = requireSession(req, res);
+        if (!session) return;
+        const memory = await readMobileMemory(session);
+        sendJson(res, 200, {items: memory.items, syncedAt: Date.now()});
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/v1/memory') {
+        const session = requireSession(req, res);
+        if (!session) return;
+        const body = await readJson(req);
+        const text = String(body.text || '').trim().replace(/\s+/g, ' ').slice(0, 500);
+        const category = ['people', 'preferences', 'facts'].includes(body.category)
+          ? body.category
+          : 'facts';
+        if (!text) {
+          sendJson(res, 400, {error: 'Memory text is required'});
+          return;
+        }
+        const memory = await readMobileMemory(session);
+        const duplicate = memory.items.find(
+          (item) => item.text.toLowerCase() === text.toLowerCase(),
+        );
+        if (duplicate) {
+          sendJson(res, 200, {ok: true, item: duplicate, duplicate: true});
+          return;
+        }
+        const line = `- [${category}] ${text}`;
+        await agenticRequest('/api/knowledge/notes/append', {
+          method: 'POST',
+          body: {
+            path: memory.path,
+            text: memory.content
+              ? line
+              : `# MILA Mobile Memory\n\n${line}`,
+          },
+        });
+        sendJson(res, 201, {
+          ok: true,
+          item: {
+            id: crypto.createHash('sha256').update(line).digest('hex').slice(0, 16),
+            category,
+            text,
+          },
+        });
+        return;
+      }
+
+      const memoryMatch = /^\/v1\/memory\/([a-f0-9]{16})$/.exec(url.pathname);
+      if (memoryMatch && req.method === 'DELETE') {
+        const session = requireSession(req, res);
+        if (!session) return;
+        const memory = await readMobileMemory(session);
+        if (!memory.items.some((item) => item.id === memoryMatch[1])) {
+          sendJson(res, 404, {error: 'Memory item not found'});
+          return;
+        }
+        await agenticRequest('/api/knowledge/notes/append', {
+          method: 'POST',
+          body: {
+            path: memory.path,
+            text: `- [deleted] ${memoryMatch[1]}`,
+          },
+        });
+        sendJson(res, 200, {ok: true, id: memoryMatch[1]});
+        return;
+      }
+
       if (req.method === 'POST' && url.pathname === '/v1/chat/stream') {
         if (!cfg.enableOpenAiAccount) {
           sendJson(res, 404, {error: 'Not found'});
@@ -265,7 +498,12 @@ export function createMilaServer(options = {}) {
 
       sendJson(res, 404, {error: 'Not found'});
     } catch (error) {
-      sendJson(res, 500, {error: error.message || 'Server error'});
+      const status = Number(error.status);
+      sendJson(
+        res,
+        status >= 400 && status < 600 ? status : 500,
+        {error: error.message || 'Server error'},
+      );
     }
   });
 

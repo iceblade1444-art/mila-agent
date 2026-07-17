@@ -5,8 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mila/data/models.dart';
 import 'package:mila/features/chat/chat_screen.dart';
 import 'package:mila/features/onboarding/assistant_setup_screen.dart';
+import 'package:mila/features/tasks/tasks_screen.dart';
+import 'package:mila/services/agentic/agentic_os_service.dart';
 import 'package:mila/services/storage/stores.dart';
 
 class _RenderStore implements LocalStore {
@@ -73,5 +76,47 @@ void main() {
 
     await tester.pumpWidget(app(const ChatScreen()));
     await capture(tester, key, 'screen_multimodal_chat');
+
+    await tester.pumpWidget(
+      ProviderScope(
+        key: const ValueKey('agentic-task-render'),
+        overrides: [
+          localStoreProvider.overrideWithValue(store),
+          agenticTasksProvider.overrideWith(
+            (ref) => AgenticTasksController(
+              ref,
+              autoStart: false,
+              initialState: AgenticTasksState(
+                connected: true,
+                syncedAt: DateTime.now(),
+                tasks: const [
+                  AgenticTask(
+                    id: 't_demo1',
+                    title: 'Prepare launch readiness report',
+                    body: 'Check product, market and deployment readiness.',
+                    status: 'running',
+                    assignee: 'scout',
+                    priority: 1,
+                  ),
+                  AgenticTask(
+                    id: 't_demo2',
+                    title: 'Write customer onboarding guide',
+                    summary: 'Draft completed and waiting for review.',
+                    status: 'review',
+                    assignee: 'scribe',
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+        child: MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: ThemeData.dark(useMaterial3: true),
+          home: RepaintBoundary(key: key, child: const TasksScreen()),
+        ),
+      ),
+    );
+    await capture(tester, key, 'screen_agentic_tasks');
   });
 }

@@ -18,7 +18,9 @@ class MilaAccountService {
     http.Client? client,
   }) async {
     final root = baseUrl.trim().replaceFirst(RegExp(r'/$'), '');
-    if (root.isEmpty) throw const FormatException('MILA server URL is required.');
+    if (root.isEmpty) {
+      throw const FormatException('MILA server URL is required.');
+    }
     final normalizedCode = code.trim().toUpperCase();
     if (!RegExp(r'^[A-F0-9]{8}$').hasMatch(normalizedCode)) {
       throw const FormatException('Enter the 8-character connection code.');

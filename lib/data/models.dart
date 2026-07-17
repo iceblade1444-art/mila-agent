@@ -200,6 +200,49 @@ class TaskItem {
   );
 }
 
+/// A task owned by the shared Hermes Kanban board in Agentic OS.
+class AgenticTask {
+  const AgenticTask({
+    required this.id,
+    required this.title,
+    this.body = '',
+    this.status = 'triage',
+    this.assignee = 'default',
+    this.summary = '',
+    this.priority = 0,
+    this.createdAt,
+  });
+
+  final String id;
+  final String title;
+  final String body;
+  final String status;
+  final String assignee;
+  final String summary;
+  final int priority;
+  final DateTime? createdAt;
+
+  bool get complete => status == 'done' || status == 'archived';
+  bool get active => status == 'ready' || status == 'running';
+
+  factory AgenticTask.fromJson(Map<String, dynamic> json) {
+    final created = json['created_at'];
+    return AgenticTask(
+      id: json['id'] as String? ?? '',
+      title: json['title'] as String? ?? 'Untitled task',
+      body: json['body'] as String? ?? '',
+      status: json['status'] as String? ?? 'triage',
+      assignee: json['assignee'] as String? ?? 'default',
+      summary:
+          json['latest_summary'] as String? ?? json['result'] as String? ?? '',
+      priority: (json['priority'] as num?)?.toInt() ?? 0,
+      createdAt: created is num
+          ? DateTime.fromMillisecondsSinceEpoch(created.toInt() * 1000)
+          : DateTime.tryParse(created?.toString() ?? ''),
+    );
+  }
+}
+
 enum MemoryCategory { people, preferences, facts }
 
 class MemoryItem {

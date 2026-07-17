@@ -129,6 +129,23 @@ void main() {
     expect(restored.attachments.single.type, ChatAttachmentType.image);
   });
 
+  test('Hermes Kanban task keeps its remote lifecycle metadata', () {
+    final task = AgenticTask.fromJson({
+      'id': 't_sync1',
+      'title': 'Prepare launch plan',
+      'status': 'running',
+      'assignee': 'scout',
+      'latest_summary': 'Evidence collection started',
+      'priority': 2,
+      'created_at': 1784287000,
+    });
+    expect(task.id, 't_sync1');
+    expect(task.active, isTrue);
+    expect(task.assignee, 'scout');
+    expect(task.summary, 'Evidence collection started');
+    expect(task.createdAt, isNotNull);
+  });
+
   test('secure voice token is requested with the MILA session', () async {
     const service = GeminiLiveTokenService(
       baseUrl: 'https://mila.test/',
