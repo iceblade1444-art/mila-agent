@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/mila_theme.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models.dart';
+import '../../services/agentic/agentic_os_service.dart';
 import '../../services/storage/stores.dart';
 
 /// Tasks & Automations (design screen 12).
@@ -26,32 +27,37 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
       isScrollControlled: true,
       builder: (sheetContext) => Padding(
         padding: EdgeInsets.only(
-            left: 24,
-            right: 24,
-            top: 24,
-            bottom: MediaQuery.viewInsetsOf(sheetContext).bottom + 28),
+          left: 24,
+          right: 24,
+          top: 24,
+          bottom: MediaQuery.viewInsetsOf(sheetContext).bottom + 28,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(isAutomation ? 'Create Automation' : 'Create Task',
-                style: Theme.of(sheetContext).textTheme.titleMedium),
+            Text(
+              isAutomation ? 'Create Automation' : 'Create Task',
+              style: Theme.of(sheetContext).textTheme.titleMedium,
+            ),
             const SizedBox(height: 14),
             TextField(
               controller: title,
               autofocus: true,
               decoration: InputDecoration(
-                  hintText: isAutomation
-                      ? 'e.g. Daily Email Summary'
-                      : 'e.g. Review Q2 report'),
+                hintText: isAutomation
+                    ? 'e.g. Daily Email Summary'
+                    : 'e.g. Review Q2 report',
+              ),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: subtitle,
               decoration: InputDecoration(
-                  hintText: isAutomation
-                      ? 'Schedule, e.g. Every day at 8:00 AM'
-                      : 'Details (optional)'),
+                hintText: isAutomation
+                    ? 'Schedule, e.g. Every day at 8:00 AM'
+                    : 'Details (optional)',
+              ),
             ),
             const SizedBox(height: 16),
             GradientButton(
@@ -63,11 +69,34 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
       ),
     );
     if (created == true && title.text.trim().isNotEmpty) {
-      ref.read(tasksProvider.notifier).add(TaskItem(
-            title: title.text.trim(),
-            subtitle: subtitle.text.trim(),
-            isAutomation: isAutomation,
-          ));
+      if (!isAutomation && ref.read(agenticTasksProvider).connected) {
+        try {
+          await ref
+              .read(agenticTasksProvider.notifier)
+              .create(title.text.trim(), subtitle.text.trim());
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Sent to Hermes for planning.')),
+            );
+          }
+        } catch (error) {
+          if (mounted) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(error.toString())));
+          }
+        }
+      } else {
+        ref
+            .read(tasksProvider.notifier)
+            .add(
+              TaskItem(
+                title: title.text.trim(),
+                subtitle: subtitle.text.trim(),
+                isAutomation: isAutomation,
+              ),
+            );
+      }
     }
   }
 
@@ -75,7 +104,12 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final all = ref.watch(tasksProvider);
-    final items = all.where((t) => t.isAutomation == _automations).toList();
+    final agentic = ref.watch(agenticTasksProvider);
+    final items = _automations
+        ? all.where((task) => task.isAutomation).map(_TaskView.local).toList()
+        : agentic.connected
+        ? agentic.tasks.map(_TaskView.agentic).toList()
+        : all.where((task) => !task.isAutomation).map(_TaskView.local).toList();
 
     return Scaffold(
       body: MilaBackground(
@@ -86,8 +120,68 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
             children: [
               const SizedBox(height: 18),
               Center(
-                  child:
-                      Text('Tasks & Automations', style: text.headlineSmall)),
+                child: Text('Tasks & Automations', style: text.headlineSmall),
+              ),
+              if (!_automations) ...[
+                const SizedBox(height: 8),
+                Center(
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: agentic.connected
+                        ? () =>
+                              ref.read(agenticTasksProvider.notifier).refresh()
+                        : null,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color:
+                            (agentic.connected
+                                    ? MilaColors.success
+                                    : MilaColors.textTertiary)
+                                .withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (agentic.loading)
+                            const SizedBox(
+                              width: 12,
+                              height: 12,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 1.5,
+                              ),
+                            )
+                          else
+                            Icon(
+                              agentic.connected
+                                  ? Icons.sync_rounded
+                                  : Icons.phone_android_rounded,
+                              size: 15,
+                              color: agentic.connected
+                                  ? MilaColors.success
+                                  : MilaColors.textTertiary,
+                            ),
+                          const SizedBox(width: 6),
+                          Text(
+                            agentic.connected
+                                ? 'Hermes Kanban synced'
+                                : 'Local tasks · connect Agentic OS',
+                            style: text.labelSmall?.copyWith(
+                              color: agentic.connected
+                                  ? MilaColors.success
+                                  : MilaColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(height: 18),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -106,12 +200,10 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                       ])
                         Expanded(
                           child: GestureDetector(
-                            onTap: () =>
-                                setState(() => _automations = auto),
+                            onTap: () => setState(() => _automations = auto),
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 180),
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 9),
+                              padding: const EdgeInsets.symmetric(vertical: 9),
                               decoration: BoxDecoration(
                                 gradient: _automations == auto
                                     ? MilaColors.primaryGradient
@@ -119,11 +211,14 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                                 borderRadius: BorderRadius.circular(18),
                               ),
                               child: Center(
-                                child: Text(label,
-                                    style: text.labelLarge?.copyWith(
-                                        color: _automations == auto
-                                            ? Colors.white
-                                            : MilaColors.textSecondary)),
+                                child: Text(
+                                  label,
+                                  style: text.labelLarge?.copyWith(
+                                    color: _automations == auto
+                                        ? Colors.white
+                                        : MilaColors.textSecondary,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
@@ -140,16 +235,19 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Icon(
-                                _automations
-                                    ? Icons.autorenew_rounded
-                                    : Icons.task_alt_rounded,
-                                size: 44,
-                                color: MilaColors.textTertiary),
+                              _automations
+                                  ? Icons.autorenew_rounded
+                                  : Icons.task_alt_rounded,
+                              size: 44,
+                              color: MilaColors.textTertiary,
+                            ),
                             const SizedBox(height: 12),
                             Text(
                               _automations
                                   ? 'No automations yet.\nAsk MILA to automate something.'
-                                  : 'No tasks yet.\nAsk MILA to create one, or add it here.',
+                                  : agentic.connected
+                                  ? 'No Hermes tasks yet.\nAsk MILA or create a task here.'
+                                  : 'No tasks yet.\nConnect Agentic OS or add one locally.',
                               textAlign: TextAlign.center,
                               style: text.bodySmall,
                             ),
@@ -157,8 +255,7 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                         ),
                       )
                     : ListView.builder(
-                        padding:
-                            const EdgeInsets.fromLTRB(20, 0, 20, 180),
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 180),
                         physics: const BouncingScrollPhysics(),
                         itemCount: items.length,
                         itemBuilder: (_, i) {
@@ -167,23 +264,27 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                             padding: const EdgeInsets.only(bottom: 10),
                             child: Dismissible(
                               key: ValueKey(item.id),
-                              direction: DismissDirection.endToStart,
-                              onDismissed: (_) => ref
-                                  .read(tasksProvider.notifier)
-                                  .remove(item.id),
+                              direction: item.remote
+                                  ? DismissDirection.none
+                                  : DismissDirection.endToStart,
+                              onDismissed: item.remote
+                                  ? null
+                                  : (_) => ref
+                                        .read(tasksProvider.notifier)
+                                        .remove(item.id),
                               background: Container(
                                 alignment: Alignment.centerRight,
-                                padding:
-                                    const EdgeInsets.only(right: 20),
+                                padding: const EdgeInsets.only(right: 20),
                                 decoration: BoxDecoration(
-                                  color: MilaColors.danger
-                                      .withValues(alpha: 0.2),
-                                  borderRadius:
-                                      BorderRadius.circular(18),
+                                  color: MilaColors.danger.withValues(
+                                    alpha: 0.2,
+                                  ),
+                                  borderRadius: BorderRadius.circular(18),
                                 ),
                                 child: const Icon(
-                                    Icons.delete_outline_rounded,
-                                    color: MilaColors.danger),
+                                  Icons.delete_outline_rounded,
+                                  color: MilaColors.danger,
+                                ),
                               ),
                               child: GlassCard(
                                 child: Row(
@@ -191,8 +292,7 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                                     TileIcon(
                                       icon: _automations
                                           ? Icons.autorenew_rounded
-                                          : Icons
-                                              .check_circle_outline_rounded,
+                                          : Icons.check_circle_outline_rounded,
                                       color: _automations
                                           ? MilaColors.violet
                                           : MilaColors.purple,
@@ -207,8 +307,7 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                                             item.title,
                                             style: text.titleSmall?.copyWith(
                                               decoration: item.done
-                                                  ? TextDecoration
-                                                      .lineThrough
+                                                  ? TextDecoration.lineThrough
                                                   : null,
                                               color: item.done
                                                   ? MilaColors.textTertiary
@@ -217,8 +316,32 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                                           ),
                                           if (item.subtitle.isNotEmpty) ...[
                                             const SizedBox(height: 3),
-                                            Text(item.subtitle,
-                                                style: text.bodySmall),
+                                            Text(
+                                              item.subtitle,
+                                              style: text.bodySmall,
+                                            ),
+                                          ],
+                                          if (item.remote) ...[
+                                            const SizedBox(height: 8),
+                                            Wrap(
+                                              spacing: 7,
+                                              runSpacing: 6,
+                                              children: [
+                                                _TaskTag(
+                                                  label: item.status,
+                                                  color: _statusColor(
+                                                    item.status,
+                                                  ),
+                                                ),
+                                                _TaskTag(
+                                                  label:
+                                                      item.assignee == 'default'
+                                                      ? 'Hermes'
+                                                      : item.assignee,
+                                                  color: MilaColors.cyan,
+                                                ),
+                                              ],
+                                            ),
                                           ],
                                         ],
                                       ),
@@ -227,20 +350,53 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                                         ? Switch(
                                             value: item.enabled,
                                             onChanged: (v) => ref
-                                                .read(
-                                                    tasksProvider.notifier)
+                                                .read(tasksProvider.notifier)
                                                 .toggle(item.id, v),
                                           )
                                         : Checkbox(
                                             value: item.done,
                                             shape: const CircleBorder(),
-                                            activeColor:
-                                                MilaColors.violet,
-                                            onChanged: (v) => ref
-                                                .read(
-                                                    tasksProvider.notifier)
-                                                .setDone(
-                                                    item.id, v ?? false),
+                                            activeColor: MilaColors.violet,
+                                            onChanged: item.remote
+                                                ? item.done
+                                                      ? null
+                                                      : (value) async {
+                                                          if (value != true) {
+                                                            return;
+                                                          }
+                                                          try {
+                                                            await ref
+                                                                .read(
+                                                                  agenticTasksProvider
+                                                                      .notifier,
+                                                                )
+                                                                .markDone(
+                                                                  item.id,
+                                                                );
+                                                          } catch (error) {
+                                                            if (context
+                                                                .mounted) {
+                                                              ScaffoldMessenger.of(
+                                                                context,
+                                                              ).showSnackBar(
+                                                                SnackBar(
+                                                                  content: Text(
+                                                                    error
+                                                                        .toString(),
+                                                                  ),
+                                                                ),
+                                                              );
+                                                            }
+                                                          }
+                                                        }
+                                                : (value) => ref
+                                                      .read(
+                                                        tasksProvider.notifier,
+                                                      )
+                                                      .setDone(
+                                                        item.id,
+                                                        value ?? false,
+                                                      ),
                                           ),
                                   ],
                                 ),
@@ -260,10 +416,82 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
           onPressed: _create,
           backgroundColor: MilaColors.violet,
           icon: const Icon(Icons.add_rounded, color: Colors.white),
-          label: Text(_automations ? 'Create Automation' : 'Create Task',
-              style: const TextStyle(color: Colors.white)),
+          label: Text(
+            _automations ? 'Create Automation' : 'Create Task',
+            style: const TextStyle(color: Colors.white),
+          ),
         ),
       ),
     );
   }
 }
+
+class _TaskView {
+  const _TaskView({
+    required this.id,
+    required this.title,
+    required this.subtitle,
+    required this.done,
+    required this.enabled,
+    required this.remote,
+    this.status = '',
+    this.assignee = '',
+  });
+
+  final String id;
+  final String title;
+  final String subtitle;
+  final bool done;
+  final bool enabled;
+  final bool remote;
+  final String status;
+  final String assignee;
+
+  factory _TaskView.local(TaskItem task) => _TaskView(
+    id: task.id,
+    title: task.title,
+    subtitle: task.subtitle,
+    done: task.done,
+    enabled: task.enabled,
+    remote: false,
+  );
+
+  factory _TaskView.agentic(AgenticTask task) => _TaskView(
+    id: task.id,
+    title: task.title,
+    subtitle: task.summary.isNotEmpty ? task.summary : task.body,
+    done: task.complete,
+    enabled: true,
+    remote: true,
+    status: task.status,
+    assignee: task.assignee,
+  );
+}
+
+class _TaskTag extends StatelessWidget {
+  const _TaskTag({required this.label, required this.color});
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(color: color.withValues(alpha: 0.26)),
+    ),
+    child: Text(
+      label,
+      style: Theme.of(context).textTheme.labelSmall?.copyWith(color: color),
+    ),
+  );
+}
+
+Color _statusColor(String status) => switch (status) {
+  'running' => MilaColors.cyan,
+  'ready' || 'review' => MilaColors.success,
+  'blocked' => MilaColors.danger,
+  'done' => MilaColors.success,
+  _ => MilaColors.violet,
+};

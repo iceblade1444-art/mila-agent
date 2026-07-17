@@ -27,6 +27,24 @@ async function withServer(options, run) {
   }
 }
 
+async function connectMobile(baseUrl, label = 'Mobile tester') {
+  const issued = await fetch(`${baseUrl}/admin/connection-code`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Admin-Token': 'admin-secret',
+    },
+    body: JSON.stringify({label}),
+  });
+  const {code} = await issued.json();
+  const exchange = await fetch(`${baseUrl}/v1/auth/device`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({code}),
+  });
+  return exchange.json();
+}
+
 test('health endpoint returns ok', async () => {
   await withServer({}, async (baseUrl) => {
     const response = await fetch(`${baseUrl}/health`);
@@ -94,6 +112,112 @@ test('admin can issue a one-time MILA connection code', async () => {
       assert.equal(reused.status, 400);
     },
   );
+});
+
+test('mobile session synchronizes tasks through the private Agentic OS proxy', async () => {
+  const calls = [];
+  let memoryContent = '';
+  const fetchImpl = async (url, request = {}) => {
+    calls.push({url, request});
+    assert.equal(request.headers.Authorization, 'Bearer agentic-secret');
+    const pathname = new URL(url).pathname;
+    if (pathname === '/api/kanban/profiles') {
+      return Response.json({profiles: [{name: 'default'}, {name: 'scout'}]});
+    }
+    if (pathname === '/api/kanban/orchestration') {
+      return Response.json({orchestrator_profile: 'default', auto_decompose: true});
+    }
+    if (pathname === '/api/kanban/board') {
+      return Response.json({
+        columns: [
+          {name: 'running', tasks: [{id: 't_live1', title: 'Research market', assignee: 'scout'}]},
+          {name: 'done', tasks: []},
+        ],
+      });
+    }
+    if (pathname === '/api/kanban/tasks' && request.method === 'POST') {
+      const body = JSON.parse(request.body);
+      assert.equal(body.initialStatus, 'triage');
+      assert.equal(body.assignee, 'default');
+      return Response.json({task: {id: 't_new1', ...body, status: 'triage'}});
+    }
+    if (pathname === '/api/kanban/dispatch') return Response.json({claimed: 0});
+    if (pathname === '/api/knowledge/notes') {
+      const notePath = new URL(url).searchParams.get('q');
+      return Response.json(memoryContent ? [{path: notePath}] : []);
+    }
+    if (pathname === '/api/knowledge/notes/read') {
+      return Response.json({content: memoryContent});
+    }
+    if (pathname === '/api/knowledge/notes/append') {
+      const body = JSON.parse(request.body);
+      memoryContent += `${memoryContent ? '\n' : ''}${body.text}`;
+      return Response.json({path: body.path, content: memoryContent});
+    }
+    return Response.json({error: 'unexpected path'}, {status: 404});
+  };
+
+  await withServer(
+    {
+      fetchImpl,
+      config: {
+        adminToken: 'admin-secret',
+        agenticOsUrl: 'http://agentic-os.internal:8787',
+        agenticOsToken: 'agentic-secret',
+      },
+    },
+    async (baseUrl) => {
+      const {token} = await connectMobile(baseUrl);
+      const headers = {Authorization: `Bearer ${token}`};
+
+      const denied = await fetch(`${baseUrl}/v1/tasks`);
+      assert.equal(denied.status, 401);
+
+      const status = await fetch(`${baseUrl}/v1/agentic/status`, {headers});
+      assert.equal(status.status, 200);
+      const statusJson = await status.json();
+      assert.equal(statusJson.profiles.length, 2);
+      assert.equal(statusJson.orchestration.orchestrator_profile, 'default');
+
+      const list = await fetch(`${baseUrl}/v1/tasks`, {headers});
+      const listJson = await list.json();
+      assert.equal(listJson.tasks[0].status, 'running');
+      assert.equal(listJson.tasks[0].assignee, 'scout');
+
+      const create = await fetch(`${baseUrl}/v1/tasks`, {
+        method: 'POST',
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: JSON.stringify({title: 'Plan launch', body: 'Return a verified plan'}),
+      });
+      assert.equal(create.status, 201);
+      assert.equal((await create.json()).task.id, 't_new1');
+
+      const saveMemory = await fetch(`${baseUrl}/v1/memory`, {
+        method: 'POST',
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          text: 'Prefers concise briefings',
+          category: 'preferences',
+        }),
+      });
+      assert.equal(saveMemory.status, 201);
+      const savedItem = (await saveMemory.json()).item;
+      assert.match(savedItem.id, /^[a-f0-9]{16}$/);
+
+      const memory = await fetch(`${baseUrl}/v1/memory`, {headers});
+      assert.equal((await memory.json()).items[0].text, 'Prefers concise briefings');
+
+      const removeMemory = await fetch(
+        `${baseUrl}/v1/memory/${savedItem.id}`,
+        {method: 'DELETE', headers},
+      );
+      assert.equal(removeMemory.status, 200);
+      const afterDelete = await fetch(`${baseUrl}/v1/memory`, {headers});
+      assert.deepEqual((await afterDelete.json()).items, []);
+    },
+  );
+
+  assert.ok(calls.some((call) => call.url.endsWith('/api/kanban/dispatch')));
 });
 
 test('app update metadata can be saved and checked', async () => {

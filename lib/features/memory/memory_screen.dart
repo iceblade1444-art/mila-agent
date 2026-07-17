@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../core/theme/mila_theme.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models.dart';
+import '../../services/agentic/agentic_os_service.dart';
 import '../../services/storage/stores.dart';
 
 /// Memory Vault (design screen 13). Everything stored here is injected
@@ -19,6 +20,37 @@ class MemoryScreen extends ConsumerStatefulWidget {
 class _MemoryScreenState extends ConsumerState<MemoryScreen> {
   String _query = '';
   MemoryCategory? _filter;
+  bool _syncing = false;
+  bool _cloudConnected = false;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(_sync);
+  }
+
+  Future<void> _sync() async {
+    final agentic = ref.read(agenticOsServiceProvider);
+    final connected = await agentic.isConnected();
+    if (!connected) {
+      if (mounted) setState(() => _cloudConnected = false);
+      return;
+    }
+    if (mounted) setState(() => _syncing = true);
+    try {
+      final remote = await agentic.listMemory();
+      ref.read(memoriesProvider.notifier).mergeRemote(remote);
+      if (mounted) setState(() => _cloudConnected = true);
+    } on AgenticOsException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } finally {
+      if (mounted) setState(() => _syncing = false);
+    }
+  }
 
   Future<void> _add() async {
     final controller = TextEditingController();
@@ -29,16 +61,19 @@ class _MemoryScreenState extends ConsumerState<MemoryScreen> {
       builder: (sheetContext) => StatefulBuilder(
         builder: (sheetContext, setSheetState) => Padding(
           padding: EdgeInsets.only(
-              left: 24,
-              right: 24,
-              top: 24,
-              bottom: MediaQuery.viewInsetsOf(sheetContext).bottom + 28),
+            left: 24,
+            right: 24,
+            top: 24,
+            bottom: MediaQuery.viewInsetsOf(sheetContext).bottom + 28,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Add Memory',
-                  style: Theme.of(sheetContext).textTheme.titleMedium),
+              Text(
+                'Add Memory',
+                style: Theme.of(sheetContext).textTheme.titleMedium,
+              ),
               const SizedBox(height: 14),
               TextField(
                 controller: controller,
@@ -46,7 +81,8 @@ class _MemoryScreenState extends ConsumerState<MemoryScreen> {
                 maxLines: 3,
                 minLines: 1,
                 decoration: const InputDecoration(
-                    hintText: 'e.g. Alex prefers concise summaries'),
+                  hintText: 'e.g. Alex prefers concise summaries',
+                ),
               ),
               const SizedBox(height: 14),
               Row(
@@ -64,25 +100,56 @@ class _MemoryScreenState extends ConsumerState<MemoryScreen> {
               ),
               const SizedBox(height: 16),
               GradientButton(
-                  label: 'Save',
-                  onPressed: () => Navigator.pop(sheetContext, true)),
+                label: 'Save',
+                onPressed: () => Navigator.pop(sheetContext, true),
+              ),
             ],
           ),
         ),
       ),
     );
     if (saved == true && controller.text.trim().isNotEmpty) {
-      ref
-          .read(memoriesProvider.notifier)
-          .add(MemoryItem(text: controller.text.trim(), category: category));
+      final item = MemoryItem(text: controller.text.trim(), category: category);
+      ref.read(memoriesProvider.notifier).add(item);
+      final agentic = ref.read(agenticOsServiceProvider);
+      if (await agentic.isConnected()) {
+        try {
+          final remote = await agentic.appendMemory(item);
+          ref.read(memoriesProvider.notifier).mergeRemote([remote]);
+          if (mounted) setState(() => _cloudConnected = true);
+        } on AgenticOsException catch (error) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Saved locally. ${error.message}')),
+            );
+          }
+        }
+      }
     }
   }
 
+  Future<void> _remove(MemoryItem item) async {
+    final remoteId = RegExp(r'^[a-f0-9]{16}$').hasMatch(item.id);
+    if (remoteId) {
+      try {
+        await ref.read(agenticOsServiceProvider).deleteMemory(item.id);
+      } on AgenticOsException catch (error) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(error.message)));
+        }
+        return;
+      }
+    }
+    ref.read(memoriesProvider.notifier).remove(item.id);
+  }
+
   static String _categoryLabel(MemoryCategory c) => switch (c) {
-        MemoryCategory.people => 'People',
-        MemoryCategory.preferences => 'Preferences',
-        MemoryCategory.facts => 'Facts',
-      };
+    MemoryCategory.people => 'People',
+    MemoryCategory.preferences => 'Preferences',
+    MemoryCategory.facts => 'Facts',
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -98,7 +165,29 @@ class _MemoryScreenState extends ConsumerState<MemoryScreen> {
     }).toList();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Memory Vault')),
+      appBar: AppBar(
+        title: const Text('Memory Vault'),
+        actions: [
+          IconButton(
+            tooltip: _cloudConnected ? 'Synced with Obsidian' : 'Sync memory',
+            onPressed: _syncing ? null : _sync,
+            icon: _syncing
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Icon(
+                    _cloudConnected
+                        ? Icons.cloud_done_outlined
+                        : Icons.cloud_sync_outlined,
+                    color: _cloudConnected
+                        ? MilaColors.success
+                        : MilaColors.textSecondary,
+                  ),
+          ),
+        ],
+      ),
       body: MilaBackground(
         glowTop: false,
         child: SafeArea(
@@ -108,8 +197,11 @@ class _MemoryScreenState extends ConsumerState<MemoryScreen> {
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-                child: Text('MILA remembers what matters',
-                    style: text.bodySmall, textAlign: TextAlign.center),
+                child: Text(
+                  'MILA remembers what matters',
+                  style: text.bodySmall,
+                  textAlign: TextAlign.center,
+                ),
               ),
               Padding(
                 padding: const EdgeInsets.all(20),
@@ -117,8 +209,10 @@ class _MemoryScreenState extends ConsumerState<MemoryScreen> {
                   onChanged: (v) => setState(() => _query = v),
                   decoration: const InputDecoration(
                     hintText: 'Search memories',
-                    prefixIcon: Icon(Icons.search_rounded,
-                        color: MilaColors.textTertiary),
+                    prefixIcon: Icon(
+                      Icons.search_rounded,
+                      color: MilaColors.textTertiary,
+                    ),
                   ),
                 ),
               ),
@@ -128,9 +222,10 @@ class _MemoryScreenState extends ConsumerState<MemoryScreen> {
                 child: Row(
                   children: [
                     MilaChip(
-                        label: 'All',
-                        active: _filter == null,
-                        onTap: () => setState(() => _filter = null)),
+                      label: 'All',
+                      active: _filter == null,
+                      onTap: () => setState(() => _filter = null),
+                    ),
                     for (final c in MemoryCategory.values)
                       Padding(
                         padding: const EdgeInsets.only(left: 8),
@@ -165,33 +260,31 @@ class _MemoryScreenState extends ConsumerState<MemoryScreen> {
                             padding: const EdgeInsets.only(bottom: 10),
                             child: GlassCard(
                               child: Row(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
-                                        Text(m.text,
-                                            style: text.bodyMedium),
+                                        Text(m.text, style: text.bodyMedium),
                                         const SizedBox(height: 6),
                                         Text(
                                           '${_categoryLabel(m.category)} · ${DateFormat('MMM d, yyyy').format(m.createdAt)}',
-                                          style: text.labelSmall
-                                              ?.copyWith(fontSize: 11),
+                                          style: text.labelSmall?.copyWith(
+                                            fontSize: 11,
+                                          ),
                                         ),
                                       ],
                                     ),
                                   ),
                                   IconButton(
                                     icon: const Icon(
-                                        Icons.delete_outline_rounded,
-                                        size: 20,
-                                        color: MilaColors.textTertiary),
-                                    onPressed: () => ref
-                                        .read(memoriesProvider.notifier)
-                                        .remove(m.id),
+                                      Icons.delete_outline_rounded,
+                                      size: 20,
+                                      color: MilaColors.textTertiary,
+                                    ),
+                                    onPressed: () => _remove(m),
                                   ),
                                 ],
                               ),
@@ -203,9 +296,10 @@ class _MemoryScreenState extends ConsumerState<MemoryScreen> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
                 child: GradientButton(
-                    label: 'Add Memory',
-                    icon: Icons.add_rounded,
-                    onPressed: _add),
+                  label: 'Add Memory',
+                  icon: Icons.add_rounded,
+                  onPressed: _add,
+                ),
               ),
             ],
           ),

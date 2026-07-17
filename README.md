@@ -15,8 +15,8 @@ currently disabled.
 | Voice assistant: idle / listening / thinking / speaking (06–09) | ✅ Gemini Live, acoustic echo protection, live camera vision |
 | Chat transcript + AI action cards (09–10) | ✅ streaming, photos, camera and document attachments |
 | Command Center shortcuts (11) | ✅ |
-| Tasks & Automations (12) | ✅ local storage |
-| Memory Vault (13) | ✅ injected into the system prompt for text *and* voice |
+| Tasks & Automations (12) | ✅ Hermes Kanban sync; local fallback before pairing |
+| Memory Vault (13) | ✅ Obsidian sync; injected into text and voice prompts |
 | Integrations (14) | ⚠️ UI + local state; real OAuth needs your backend (below) |
 | Profile & Settings (15) | ✅ |
 | Approval confirmation (16) | ✅ drafts require explicit approval |
@@ -34,6 +34,12 @@ lib/
     storage/       Hive local store + flutter_secure_storage for API keys
   features/        one folder per screen, Riverpod state, go_router navigation
 ```
+
+When paired with Agentic OS, MILA uses the backend as a narrow security proxy:
+the phone holds a revocable MILA session, while the Agentic OS token and Gemini
+key remain server-side. Approved text tasks and voice proposals enter Hermes
+Kanban in `triage`; task status, assignee and handoff summaries sync back to the
+Tasks screen. See `docs/AGENTIC_OS_SYNC_RU.md` for the full contract.
 
 Adding another LLM vendor = one new `LlmProvider` subclass and a settings entry.
 

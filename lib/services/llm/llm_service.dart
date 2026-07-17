@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models.dart';
+import '../agentic/agentic_os_service.dart';
 import '../integrations/integration_service.dart';
 import '../soul/soul_service.dart';
 import '../storage/stores.dart';
@@ -131,6 +133,7 @@ SPOKEN CONVERSATION RULES — you are talking OUT LOUD in a live voice call
 - Never mix two languages inside one sentence unless the user does it first.
 - If you could not hear or understand the user, briefly ask them to repeat (in Uzbek: "Kechirasiz, aniq eshitmadim. Iltimos, qayta ayting."). For Uzbek names, places, phone numbers and dates, ask for confirmation instead of guessing.
 - Confirm important details — names, amounts, dates — by repeating them back in words.
+- When the user asks you to perform substantial work, call delegate_to_hermes with a short title and a precise definition of done. Explain briefly that the proposal must be confirmed in MILA chat. Never claim it was started before confirmation.
 - Do not read out URLs, file paths or JSON.''');
 
       final recent = _ref
@@ -157,7 +160,7 @@ RESPONSE FORMAT (text chat)
 - Substantial business request → structure it: summary, key points, recommended action, next step.
 - Messages, letters or instructions → write ready-to-use text.
 
-When the user asks for something actionable (a task, a reminder, a message
+When the user asks for something actionable (a task for Hermes, a reminder, a message
 draft, focus time), first answer normally, then append a fenced block that
 proposes actions the app can execute after user approval:
 
@@ -330,8 +333,8 @@ block itself in your prose.''');
     }
   }
 
-  /// Executes an approved action. Time-bound actions open the device calendar
-  /// only after approval; all other actions remain local and reversible.
+  /// Executes an approved action. Hermes tasks go to the shared Agentic OS
+  /// Kanban when the mobile account is connected.
   Future<ActionExecutionResult> applyAction(
     String messageId,
     MilaAction action,
@@ -340,8 +343,30 @@ block itself in your prose.''');
     var result = const ActionExecutionResult(true, 'Action completed');
     switch (action.type) {
       case ActionType.createTask:
-        tasks.add(TaskItem(title: action.title, subtitle: action.subtitle));
-        result = ActionExecutionResult(true, 'Added task: ${action.title}');
+        final agentic = _ref.read(agenticOsServiceProvider);
+        if (await agentic.isConnected()) {
+          try {
+            final task = await agentic.createTask(
+              title: action.title,
+              body: action.subtitle,
+            );
+            await _ref
+                .read(agenticTasksProvider.notifier)
+                .refresh(silent: true);
+            result = ActionExecutionResult(
+              true,
+              'Sent to Hermes: ${task.title}',
+            );
+          } on AgenticOsException catch (error) {
+            return ActionExecutionResult(false, error.message);
+          }
+        } else {
+          tasks.add(TaskItem(title: action.title, subtitle: action.subtitle));
+          result = ActionExecutionResult(
+            true,
+            'Saved locally. Connect Agentic OS to delegate it to Hermes.',
+          );
+        }
       case ActionType.reminder:
         tasks.add(
           TaskItem(
@@ -405,14 +430,23 @@ block itself in your prose.''');
   void _saveMemoryAction(MilaAction action) {
     final text = (action.payload['text'] as String?) ?? action.title;
     if (text.trim().isEmpty) return;
-    _ref
-        .read(memoriesProvider.notifier)
-        .add(
-          MemoryItem(
-            text: text.trim(),
-            category: _categoryFrom(action.payload['category'] as String?),
-          ),
-        );
+    final item = MemoryItem(
+      text: text.trim(),
+      category: _categoryFrom(action.payload['category'] as String?),
+    );
+    _ref.read(memoriesProvider.notifier).add(item);
+    unawaited(_syncMemory(item));
+  }
+
+  Future<void> _syncMemory(MemoryItem item) async {
+    final agentic = _ref.read(agenticOsServiceProvider);
+    if (!await agentic.isConnected()) return;
+    try {
+      final remote = await agentic.appendMemory(item);
+      _ref.read(memoriesProvider.notifier).mergeRemote([remote]);
+    } on AgenticOsException {
+      // The local memory remains available and the Memory screen can retry.
+    }
   }
 
   static MemoryCategory _categoryFrom(String? raw) => switch (raw) {

@@ -342,6 +342,7 @@ class VoiceController extends StateNotifier<VoiceState> {
           unawaited(_resumeLiveSession(client));
         }
       }
+      ..onToolCall = _onToolCall
       ..onClosed = (reason) {
         if (_client == client &&
             (state.active || state.phase == VoicePhase.connecting)) {
@@ -357,6 +358,52 @@ class VoiceController extends StateNotifier<VoiceState> {
       ..onError = (error) {
         if (!ready.isCompleted) ready.completeError(error);
       };
+  }
+
+  void _onToolCall(String id, String name, Map<String, dynamic> args) {
+    if (name != 'delegate_to_hermes') {
+      _client?.sendToolResponse(
+        id: id,
+        name: name,
+        response: const {'status': 'unsupported'},
+      );
+      return;
+    }
+    final title = args['title']?.toString().trim() ?? '';
+    final details = args['details']?.toString().trim() ?? '';
+    if (title.isEmpty) {
+      _client?.sendToolResponse(
+        id: id,
+        name: name,
+        response: const {'status': 'invalid', 'reason': 'title is required'},
+      );
+      return;
+    }
+    _ref
+        .read(chatProvider.notifier)
+        .add(
+          ChatMessage(
+            role: ChatRole.assistant,
+            text: 'Review this task before I send it to Hermes.',
+            viaVoice: true,
+            actions: [
+              MilaAction(
+                type: ActionType.createTask,
+                title: title,
+                subtitle: details,
+                payload: const {'source': 'voice'},
+              ),
+            ],
+          ),
+        );
+    _client?.sendToolResponse(
+      id: id,
+      name: name,
+      response: const {
+        'status': 'pending_user_confirmation',
+        'message': 'The task proposal is visible in MILA chat.',
+      },
+    );
   }
 
   Future<void> _resumeLiveSession(GeminiLiveClient previous) async {

@@ -49,6 +49,7 @@ class GeminiLiveClient {
   void Function()? onInterrupted;
   void Function(String handle)? onSessionResumption;
   void Function(String timeLeft)? onGoAway;
+  void Function(String id, String name, Map<String, dynamic> args)? onToolCall;
   void Function(String reason)? onClosed;
   void Function(Object error)? onError;
 
@@ -106,6 +107,32 @@ class GeminiLiveClient {
           if (sessionResumptionHandle.isNotEmpty)
             'handle': sessionResumptionHandle,
         },
+        'tools': [
+          {
+            'functionDeclarations': [
+              {
+                'name': 'delegate_to_hermes',
+                'description':
+                    'Propose a concrete task for Hermes Agentic OS. The user must approve it in the MILA chat before execution.',
+                'parameters': {
+                  'type': 'OBJECT',
+                  'properties': {
+                    'title': {
+                      'type': 'STRING',
+                      'description': 'Short task title',
+                    },
+                    'details': {
+                      'type': 'STRING',
+                      'description':
+                          'Context, constraints and definition of done',
+                    },
+                  },
+                  'required': ['title'],
+                },
+              },
+            ],
+          },
+        ],
       },
     });
   }
@@ -139,6 +166,21 @@ class GeminiLiveClient {
     if (!isConnected) return;
     _send({
       'realtimeInput': {'text': text},
+    });
+  }
+
+  void sendToolResponse({
+    required String id,
+    required String name,
+    required Map<String, dynamic> response,
+  }) {
+    if (!isConnected) return;
+    _send({
+      'toolResponse': {
+        'functionResponses': [
+          {'id': id, 'name': name, 'response': response},
+        ],
+      },
     });
   }
 
@@ -211,6 +253,20 @@ class GeminiLiveClient {
     if (msg.containsKey('goAway')) {
       final goAway = msg['goAway'] as Map<String, dynamic>?;
       onGoAway?.call(goAway?['timeLeft']?.toString() ?? '');
+    }
+
+    final toolCall = msg['toolCall'] as Map<String, dynamic>?;
+    final calls = toolCall?['functionCalls'] as List?;
+    if (calls != null) {
+      for (final value in calls) {
+        if (value is! Map) continue;
+        final call = value.cast<String, dynamic>();
+        final id = call['id']?.toString() ?? '';
+        final name = call['name']?.toString() ?? '';
+        final args =
+            (call['args'] as Map?)?.cast<String, dynamic>() ?? const {};
+        if (id.isNotEmpty && name.isNotEmpty) onToolCall?.call(id, name, args);
+      }
     }
   }
 
