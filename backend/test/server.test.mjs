@@ -114,6 +114,32 @@ test('admin can issue a one-time MILA connection code', async () => {
   );
 });
 
+test('admin can list and revoke a specific mobile device without exposing tokens', async () => {
+  await withServer(
+    {config: {adminToken: 'admin-secret'}},
+    async (baseUrl) => {
+      const {token, label} = await connectMobile(baseUrl, 'Creator phone');
+      const headers = {'X-Admin-Token': 'admin-secret'};
+      const listed = await fetch(`${baseUrl}/admin/devices`, {headers});
+      assert.equal(listed.status, 200);
+      const devices = (await listed.json()).devices;
+      const device = devices.find((item) => item.label === label);
+      assert.match(device.id, /^[a-f0-9]{32}$/);
+      assert.equal(device.active, true);
+      assert.equal(JSON.stringify(devices).includes(token), false);
+
+      const revoked = await fetch(`${baseUrl}/admin/devices/${device.id}`, {
+        method: 'DELETE', headers,
+      });
+      assert.equal(revoked.status, 200);
+      const denied = await fetch(`${baseUrl}/v1/agentic/status`, {
+        headers: {Authorization: `Bearer ${token}`},
+      });
+      assert.equal(denied.status, 401);
+    },
+  );
+});
+
 test('mobile session synchronizes tasks through the private Agentic OS proxy', async () => {
   const calls = [];
   let memoryContent = '';
