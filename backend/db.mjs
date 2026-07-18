@@ -17,6 +17,7 @@ export function createAppDb(dbPath = path.join('data', 'mila.db')) {
     );
     CREATE TABLE IF NOT EXISTS sessions (
       token_hash TEXT PRIMARY KEY,
+      session_id TEXT,
       label TEXT NOT NULL,
       created_at INTEGER NOT NULL,
       revoked_at INTEGER
@@ -38,6 +39,17 @@ export function createAppDb(dbPath = path.join('data', 'mila.db')) {
       updated_at INTEGER NOT NULL
     );
   `);
+  try {
+    db.exec('ALTER TABLE sessions ADD COLUMN session_id TEXT');
+  } catch (error) {
+    if (!String(error.message).includes('duplicate column name')) throw error;
+  }
+  db.exec(`
+    UPDATE sessions
+    SET session_id = lower(hex(randomblob(16)))
+    WHERE session_id IS NULL OR session_id = '';
+    CREATE UNIQUE INDEX IF NOT EXISTS sessions_session_id_idx ON sessions(session_id);
+  `);
 
   const statements = {
     insertCode: db.prepare(`
@@ -53,12 +65,20 @@ export function createAppDb(dbPath = path.join('data', 'mila.db')) {
       'DELETE FROM connection_codes WHERE expires_at < ?',
     ),
     insertSession: db.prepare(`
-      INSERT INTO sessions (token_hash, label, created_at)
-      VALUES (?, ?, ?)
+      INSERT INTO sessions (token_hash, session_id, label, created_at)
+      VALUES (?, ?, ?, ?)
     `),
     getSession: db.prepare(`
       SELECT token_hash AS tokenHash, label, created_at AS createdAt
       FROM sessions WHERE token_hash = ? AND revoked_at IS NULL
+    `),
+    listSessions: db.prepare(`
+      SELECT session_id AS id, label, created_at AS createdAt, revoked_at AS revokedAt
+      FROM sessions ORDER BY created_at DESC LIMIT 100
+    `),
+    revokeSession: db.prepare(`
+      UPDATE sessions SET revoked_at = ?
+      WHERE session_id = ? AND revoked_at IS NULL
     `),
     getUpdate: db.prepare(`
       SELECT
@@ -119,11 +139,20 @@ export function createAppDb(dbPath = path.join('data', 'mila.db')) {
     deleteCode(code) {
       statements.deleteCode.run(code);
     },
-    createSession(tokenHash, label) {
-      statements.insertSession.run(tokenHash, label, Date.now());
+    createSession(tokenHash, label, sessionId) {
+      statements.insertSession.run(tokenHash, sessionId, label, Date.now());
     },
     getSession(tokenHash) {
       return statements.getSession.get(tokenHash);
+    },
+    listSessions() {
+      return statements.listSessions.all().map((session) => ({
+        ...session,
+        active: session.revokedAt == null,
+      }));
+    },
+    revokeSession(sessionId) {
+      return statements.revokeSession.run(Date.now(), sessionId).changes > 0;
     },
     getUpdate(platform) {
       return statements.getUpdate.get(platform);

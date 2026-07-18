@@ -34,6 +34,8 @@ your computer or server IP, or a real HTTPS domain.
   is only useful when the app has a valid MILA session.
 - `GET /v1/app/update?platform=android&versionCode=1` - app update metadata.
 - `POST /admin/app/update` - save update metadata. Requires `X-Admin-Token`.
+- `GET /admin/devices` - list paired mobile devices without exposing session tokens.
+- `DELETE /admin/devices/<id>` - revoke one paired device. Requires `X-Admin-Token`.
 
 Legacy endpoints, disabled unless `ENABLE_OPENAI_ACCOUNT=true`:
 

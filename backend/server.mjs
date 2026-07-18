@@ -64,7 +64,11 @@ export function createMilaServer(options = {}) {
 
   function createSession(label) {
     const token = crypto.randomBytes(32).toString('base64url');
-    db.createSession(hashToken(token, cfg.sessionSecret), label);
+    db.createSession(
+      hashToken(token, cfg.sessionSecret),
+      label,
+      crypto.randomUUID().replaceAll('-', ''),
+    );
     return token;
   }
 
@@ -189,6 +193,29 @@ export function createMilaServer(options = {}) {
         const label = String(body.label || '').trim() || 'MILA user';
         const code = createCode(label);
         sendJson(res, 200, {ok: true, code, label, expiresInSeconds: 600});
+        return;
+      }
+
+      if (req.method === 'GET' && url.pathname === '/admin/devices') {
+        if (!hasAdminAccess(req)) {
+          sendJson(res, 403, {error: 'Admin token required'});
+          return;
+        }
+        sendJson(res, 200, {devices: db.listSessions()});
+        return;
+      }
+
+      const adminDeviceMatch = /^\/admin\/devices\/([a-f0-9]{32})$/.exec(url.pathname);
+      if (req.method === 'DELETE' && adminDeviceMatch) {
+        if (!hasAdminAccess(req)) {
+          sendJson(res, 403, {error: 'Admin token required'});
+          return;
+        }
+        if (!db.revokeSession(adminDeviceMatch[1])) {
+          sendJson(res, 404, {error: 'Active device session not found'});
+          return;
+        }
+        sendJson(res, 200, {ok: true, id: adminDeviceMatch[1]});
         return;
       }
 
