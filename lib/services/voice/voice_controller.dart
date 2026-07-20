@@ -286,6 +286,11 @@ class VoiceController extends StateNotifier<VoiceState> {
         secureTokenError = error.message;
       }
     }
+    if (accessToken.isEmpty && apiKey.isEmpty && sessionToken.isEmpty) {
+      throw StateError(
+        'MILA is not connected on this device. Open Settings > AI Providers, enter a new connection code, then tap Connect MILA account.',
+      );
+    }
     if (accessToken.isEmpty && apiKey.isEmpty) {
       throw StateError(
         'Secure voice is unavailable. ${secureTokenError ?? 'Gemini access is not included in this build.'}',
