@@ -63,6 +63,11 @@ void main() {
 
     expect(find.text('Your name'), findsOneWidget);
     expect(find.text('Assistant name'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Female'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('Female'), findsOneWidget);
     expect(find.text('Male'), findsOneWidget);
     await tester.scrollUntilVisible(

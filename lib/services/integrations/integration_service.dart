@@ -22,16 +22,19 @@ class IntegrationConfigsController
     final raw = await _secure.read(SecureStore.integrationConfigs);
     if (raw == null || raw.isEmpty) return;
     try {
-      final map = (jsonDecode(raw) as Map).map((k, v) => MapEntry(
-          k.toString(), (v as Map).cast<String, String>()));
+      final map = (jsonDecode(raw) as Map).map(
+        (k, v) => MapEntry(k.toString(), (v as Map).cast<String, String>()),
+      );
       if (mounted) state = map.cast<String, Map<String, String>>();
     } catch (_) {}
   }
 
   Future<void> save(String integration, Map<String, String> config) async {
-    final cleaned = Map<String, String>.fromEntries(config.entries
-        .map((e) => MapEntry(e.key, e.value.trim()))
-        .where((e) => e.value.isNotEmpty));
+    final cleaned = Map<String, String>.fromEntries(
+      config.entries
+          .map((e) => MapEntry(e.key, e.value.trim()))
+          .where((e) => e.value.isNotEmpty),
+    );
     final next = {...state};
     if (cleaned.isEmpty) {
       next.remove(integration);
@@ -45,12 +48,15 @@ class IntegrationConfigsController
   Map<String, String> of(String integration) => state[integration] ?? const {};
 }
 
-final integrationConfigsProvider = StateNotifierProvider<
-        IntegrationConfigsController, Map<String, Map<String, String>>>(
-    (ref) => IntegrationConfigsController(ref.watch(secureStoreProvider)));
+final integrationConfigsProvider =
+    StateNotifierProvider<
+      IntegrationConfigsController,
+      Map<String, Map<String, String>>
+    >((ref) => IntegrationConfigsController(ref.watch(secureStoreProvider)));
 
-final integrationServiceProvider =
-    Provider<IntegrationService>((ref) => IntegrationService(ref));
+final integrationServiceProvider = Provider<IntegrationService>(
+  (ref) => IntegrationService(ref),
+);
 
 class IntegrationResult {
   const IntegrationResult(this.ok, this.message);
@@ -70,12 +76,12 @@ class IntegrationService {
       _ref.read(integrationConfigsProvider.notifier).of(name);
 
   bool isConfigured(String name) => switch (name) {
-        'Telegram' => _config(name)['botToken']?.isNotEmpty == true &&
-            _config(name)['chatId']?.isNotEmpty == true,
-        'Slack' || 'ERP / CRM' =>
-          _config(name)['webhookUrl']?.isNotEmpty == true,
-        _ => false,
-      };
+    'Telegram' =>
+      _config(name)['botToken']?.isNotEmpty == true &&
+          _config(name)['chatId']?.isNotEmpty == true,
+    'Slack' || 'ERP / CRM' => _config(name)['webhookUrl']?.isNotEmpty == true,
+    _ => false,
+  };
 
   // ---------------------------------------------------------------- Telegram
 
@@ -88,7 +94,9 @@ class IntegrationService {
     final chatId = config['chatId'] ?? '';
     if (token.isEmpty || chatId.isEmpty) {
       return const IntegrationResult(
-          false, 'Telegram is not configured (bot token + chat id).');
+        false,
+        'Telegram is not configured (bot token + chat id).',
+      );
     }
     try {
       final response = await http.post(
@@ -101,7 +109,9 @@ class IntegrationService {
         return const IntegrationResult(true, 'Sent to Telegram ✓');
       }
       return IntegrationResult(
-          false, 'Telegram: ${json['description'] ?? response.statusCode}');
+        false,
+        'Telegram: ${json['description'] ?? response.statusCode}',
+      );
     } catch (e) {
       return IntegrationResult(false, 'Telegram request failed: $e');
     }
@@ -112,7 +122,9 @@ class IntegrationService {
   /// POSTs a JSON payload to the saved webhook (Slack incoming webhook,
   /// ERP/CRM endpoint, n8n/Zapier/Make…).
   Future<IntegrationResult> postWebhook(
-      String integration, Map<String, dynamic> payload) async {
+    String integration,
+    Map<String, dynamic> payload,
+  ) async {
     final url = _config(integration)['webhookUrl'] ?? '';
     if (url.isEmpty) {
       return IntegrationResult(false, '$integration webhook URL is not set.');
@@ -129,13 +141,18 @@ class IntegrationService {
           // Slack incoming webhooks expect {"text": "..."}.
           ? jsonEncode({'text': payload['text'] ?? jsonEncode(payload)})
           : jsonEncode(payload);
-      final response = await http.post(uri,
-          headers: {'Content-Type': 'application/json'}, body: body);
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: body,
+      );
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return IntegrationResult(true, 'Delivered to $integration ✓');
       }
       return IntegrationResult(
-          false, '$integration answered ${response.statusCode}');
+        false,
+        '$integration answered ${response.statusCode}',
+      );
     } catch (e) {
       return IntegrationResult(false, '$integration request failed: $e');
     }
@@ -145,8 +162,11 @@ class IntegrationService {
 
   /// Opens the system mail app with a prefilled draft (works with Gmail,
   /// Outlook or any default mail client — no OAuth needed).
-  Future<IntegrationResult> composeEmail(
-      {String to = '', String subject = '', String body = ''}) async {
+  Future<IntegrationResult> composeEmail({
+    String to = '',
+    String subject = '',
+    String body = '',
+  }) async {
     final uri = Uri(
       scheme: 'mailto',
       path: to,
@@ -154,16 +174,24 @@ class IntegrationService {
     );
     final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
     return IntegrationResult(
-        ok, ok ? 'Opened your mail app' : 'No mail app available.');
+      ok,
+      ok ? 'Opened your mail app' : 'No mail app available.',
+    );
   }
 
   /// Opens WhatsApp with prefilled text ([phone] optional, digits only).
-  Future<IntegrationResult> sendWhatsApp(String text, {String phone = ''}) async {
+  Future<IntegrationResult> sendWhatsApp(
+    String text, {
+    String phone = '',
+  }) async {
     final uri = Uri.parse(
-        'https://wa.me/$phone?text=${Uri.encodeComponent(text)}');
+      'https://wa.me/$phone?text=${Uri.encodeComponent(text)}',
+    );
     final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
     return IntegrationResult(
-        ok, ok ? 'Opened WhatsApp' : 'Could not open WhatsApp.');
+      ok,
+      ok ? 'Opened WhatsApp' : 'Could not open WhatsApp.',
+    );
   }
 
   /// Opens the device calendar editor with a prefilled event (syncs to
@@ -176,22 +204,29 @@ class IntegrationService {
   }) async {
     if (kIsWeb) {
       return const IntegrationResult(
-          false, 'Calendar events work in the phone app.');
+        false,
+        'Calendar events work in the phone app.',
+      );
     }
     final startAt = start ?? DateTime.now().add(const Duration(hours: 1));
-    final ok = await Add2Calendar.addEvent2Cal(Event(
-      title: title,
-      description: description,
-      startDate: startAt,
-      endDate: startAt.add(duration),
-    ));
+    final ok = await Add2Calendar.addEvent2Cal(
+      Event(
+        title: title,
+        description: description,
+        startDate: startAt,
+        endDate: startAt.add(duration),
+      ),
+    );
     return IntegrationResult(
-        ok, ok ? 'Calendar editor opened' : 'Could not open the calendar.');
+      ok,
+      ok ? 'Calendar editor opened' : 'Could not open the calendar.',
+    );
   }
 
   static String _encodeQuery(Map<String, String> params) => params.entries
       .where((e) => e.value.isNotEmpty)
-      .map((e) =>
-          '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
+      .map(
+        (e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}',
+      )
       .join('&');
 }

@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/i18n/mila_localizations.dart';
 import '../../core/theme/mila_theme.dart';
 import '../../core/widgets/voice_orb.dart';
 
@@ -30,11 +31,24 @@ class _BottomBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final items = [
-      (Icons.home_rounded, 'Home', 0),
-      (Icons.grid_view_rounded, 'Center', 1),
-      (Icons.chat_bubble_outline_rounded, 'Chat', 2),
-      (Icons.check_circle_outline_rounded, 'Tasks', 3),
+      (Icons.home_rounded, l10n.pick(ru: 'Главная', en: 'Home', uz: 'Bosh'), 0),
+      (
+        Icons.grid_view_rounded,
+        l10n.pick(ru: 'Центр', en: 'Center', uz: 'Markaz'),
+        1,
+      ),
+      (
+        Icons.chat_bubble_outline_rounded,
+        l10n.pick(ru: 'Чат', en: 'Chat', uz: 'Chat'),
+        2,
+      ),
+      (
+        Icons.check_circle_outline_rounded,
+        l10n.pick(ru: 'Задачи', en: 'Tasks', uz: 'Vazifalar'),
+        3,
+      ),
     ];
 
     return Padding(
@@ -69,8 +83,7 @@ class _BottomBar extends StatelessWidget {
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color:
-                                  MilaColors.violet.withValues(alpha: 0.45),
+                              color: MilaColors.violet.withValues(alpha: 0.45),
                               blurRadius: 18,
                             ),
                           ],
@@ -101,10 +114,11 @@ class _BottomBar extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon,
-                size: 24,
-                color:
-                    selected ? MilaColors.cyan : MilaColors.textTertiary),
+            Icon(
+              icon,
+              size: 24,
+              color: selected ? MilaColors.cyan : MilaColors.textTertiary,
+            ),
             const SizedBox(height: 3),
             AnimatedContainer(
               duration: const Duration(milliseconds: 200),

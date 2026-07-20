@@ -102,7 +102,9 @@ class GradientButton extends StatelessWidget {
                       width: 22,
                       height: 22,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2.4, color: Colors.white),
+                        strokeWidth: 2.4,
+                        color: Colors.white,
+                      ),
                     )
                   : Row(
                       mainAxisSize: MainAxisSize.min,
@@ -113,9 +115,7 @@ class GradientButton extends StatelessWidget {
                         ],
                         Text(
                           label,
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleMedium
+                          style: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(color: Colors.white),
                         ),
                       ],
@@ -159,7 +159,8 @@ class GhostButton extends StatelessWidget {
           foregroundColor: color,
           side: BorderSide(color: color.withValues(alpha: 0.25)),
           shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(height / 2)),
+            borderRadius: BorderRadius.circular(height / 2),
+          ),
           textStyle: Theme.of(context).textTheme.titleSmall,
         ),
         icon: icon != null ? Icon(icon, size: 18) : const SizedBox.shrink(),
@@ -195,12 +196,14 @@ class MilaChip extends StatelessWidget {
           color: active ? null : Colors.white.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-              color: active ? Colors.transparent : MilaColors.cardBorder),
+            color: active ? Colors.transparent : MilaColors.cardBorder,
+          ),
         ),
         child: Text(
           label,
           style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              color: active ? Colors.white : MilaColors.textSecondary),
+            color: active ? Colors.white : MilaColors.textSecondary,
+          ),
         ),
       ),
     );
@@ -254,10 +257,12 @@ class MilaBackground extends StatelessWidget {
                   height: 380,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    gradient: RadialGradient(colors: [
-                      MilaColors.violet.withValues(alpha: 0.16),
-                      Colors.transparent,
-                    ]),
+                    gradient: RadialGradient(
+                      colors: [
+                        MilaColors.violet.withValues(alpha: 0.16),
+                        Colors.transparent,
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -288,8 +293,9 @@ class _WaveformState extends State<Waveform>
   void initState() {
     super.initState();
     _controller = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1400))
-      ..repeat();
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..repeat();
   }
 
   @override
@@ -305,7 +311,9 @@ class _WaveformState extends State<Waveform>
       builder: (context, _) => CustomPaint(
         size: Size(double.infinity, widget.height),
         painter: _WaveformPainter(
-            t: _controller.value, level: widget.level.clamp(0.05, 1.0)),
+          t: _controller.value,
+          level: widget.level.clamp(0.05, 1.0),
+        ),
       ),
     );
   }
@@ -322,12 +330,14 @@ class _WaveformPainter extends CustomPainter {
     const bars = 48;
     final barWidth = size.width / (bars * 1.8);
     final rnd = math.Random(7);
-    final gradient = const LinearGradient(colors: [
-      MilaColors.cyan,
-      MilaColors.violet,
-      MilaColors.purple,
-      MilaColors.pink,
-    ]).createShader(Offset.zero & size);
+    final gradient = const LinearGradient(
+      colors: [
+        MilaColors.cyan,
+        MilaColors.violet,
+        MilaColors.purple,
+        MilaColors.pink,
+      ],
+    ).createShader(Offset.zero & size);
     final paint = Paint()
       ..shader = gradient
       ..strokeWidth = barWidth
@@ -336,11 +346,11 @@ class _WaveformPainter extends CustomPainter {
     for (var i = 0; i < bars; i++) {
       final x = (i + 0.5) * size.width / bars;
       final seed = rnd.nextDouble();
-      final envelope =
-          math.sin((i / bars) * math.pi); // taller in the center
+      final envelope = math.sin((i / bars) * math.pi); // taller in the center
       final wobble =
           0.5 + 0.5 * math.sin(t * 2 * math.pi * (1 + seed) + i * 0.7);
-      final h = size.height *
+      final h =
+          size.height *
           0.9 *
           envelope *
           (0.15 + 0.85 * level * (0.35 + 0.65 * wobble));
@@ -359,7 +369,12 @@ class _WaveformPainter extends CustomPainter {
 
 /// Section header row with optional trailing action.
 class SectionHeader extends StatelessWidget {
-  const SectionHeader({super.key, required this.title, this.action, this.onAction});
+  const SectionHeader({
+    super.key,
+    required this.title,
+    this.action,
+    this.onAction,
+  });
 
   final String title;
   final String? action;
@@ -376,10 +391,9 @@ class SectionHeader extends StatelessWidget {
             onTap: onAction,
             child: Text(
               action!,
-              style: Theme.of(context)
-                  .textTheme
-                  .labelMedium
-                  ?.copyWith(color: MilaColors.cyan),
+              style: Theme.of(
+                context,
+              ).textTheme.labelMedium?.copyWith(color: MilaColors.cyan),
             ),
           ),
       ],

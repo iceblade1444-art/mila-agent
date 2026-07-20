@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/i18n/mila_localizations.dart';
 import '../../core/theme/mila_theme.dart';
 import '../../core/widgets/common.dart';
 import '../../core/widgets/voice_orb.dart';
@@ -19,7 +20,7 @@ class AssistantSetupScreen extends ConsumerStatefulWidget {
 }
 
 class _AssistantSetupScreenState extends ConsumerState<AssistantSetupScreen> {
-  static const _languages = ['Русский', 'English', 'O\'zbekcha'];
+  static const _languages = supportedMilaLanguageNames;
 
   final _addressName = TextEditingController();
   final _assistantName = TextEditingController(text: 'MILA');
@@ -84,6 +85,7 @@ class _AssistantSetupScreenState extends ConsumerState<AssistantSetupScreen> {
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
+    final l10n = context.l10n;
     return Scaffold(
       body: MilaBackground(
         child: SafeArea(
@@ -102,17 +104,54 @@ class _AssistantSetupScreenState extends ConsumerState<AssistantSetupScreen> {
                       ),
                       const SizedBox(height: 14),
                       Text(
-                        'Let\'s get acquainted',
+                        l10n.pick(
+                          ru: 'Давайте познакомимся',
+                          en: 'Let\'s get acquainted',
+                          uz: 'Keling, tanishamiz',
+                        ),
                         textAlign: TextAlign.center,
                         style: text.headlineMedium,
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        'Create an assistant that feels like yours.',
+                        l10n.pick(
+                          ru: 'Настройте помощницу так, чтобы она была именно вашей.',
+                          en: 'Create an assistant that feels like yours.',
+                          uz: 'Yordamchini o\'zingizga mos qilib sozlang.',
+                        ),
                         textAlign: TextAlign.center,
                         style: text.bodyMedium?.copyWith(
                           color: MilaColors.textSecondary,
                         ),
+                      ),
+                      const SizedBox(height: 24),
+                      Text(
+                        l10n.pick(
+                          ru: 'ЯЗЫК ИНТЕРФЕЙСА',
+                          en: 'INTERFACE LANGUAGE',
+                          uz: 'INTERFEYS TILI',
+                        ),
+                        style: text.labelSmall?.copyWith(letterSpacing: 1.5),
+                      ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final language in _languages)
+                            MilaChip(
+                              label: language,
+                              active: _language == language,
+                              onTap: () {
+                                setState(() => _language = language);
+                                ref
+                                    .read(settingsProvider.notifier)
+                                    .update(
+                                      (s) => s.copyWith(language: language),
+                                    );
+                              },
+                            ),
+                        ],
                       ),
                       const SizedBox(height: 24),
                       TextFormField(
@@ -121,13 +160,27 @@ class _AssistantSetupScreenState extends ConsumerState<AssistantSetupScreen> {
                         textCapitalization: TextCapitalization.words,
                         textInputAction: TextInputAction.done,
                         autofillHints: const [AutofillHints.name],
-                        decoration: const InputDecoration(
-                          labelText: 'Your name',
-                          hintText: 'How MILA should address you',
-                          prefixIcon: Icon(Icons.person_outline_rounded),
-                        ),
+                        decoration:
+                            const InputDecoration(
+                              prefixIcon: Icon(Icons.person_outline_rounded),
+                            ).copyWith(
+                              labelText: l10n.pick(
+                                ru: 'Ваше имя',
+                                en: 'Your name',
+                                uz: 'Ismingiz',
+                              ),
+                              hintText: l10n.pick(
+                                ru: 'Как MILA должна к вам обращаться',
+                                en: 'How MILA should address you',
+                                uz: 'MILA sizga qanday murojaat qilsin',
+                              ),
+                            ),
                         validator: (value) => (value ?? '').trim().isEmpty
-                            ? 'Please enter your name'
+                            ? l10n.pick(
+                                ru: 'Введите ваше имя',
+                                en: 'Please enter your name',
+                                uz: 'Ismingizni kiriting',
+                              )
                             : null,
                         onFieldSubmitted: (_) => _finish(),
                       ),
@@ -137,18 +190,32 @@ class _AssistantSetupScreenState extends ConsumerState<AssistantSetupScreen> {
                         keyboardType: TextInputType.name,
                         textCapitalization: TextCapitalization.words,
                         textInputAction: TextInputAction.next,
-                        decoration: const InputDecoration(
-                          labelText: 'Assistant name',
-                          hintText: 'For example: MILA, Nova, Atlas',
-                          prefixIcon: Icon(Icons.auto_awesome_rounded),
-                        ),
+                        decoration:
+                            const InputDecoration(
+                              prefixIcon: Icon(Icons.auto_awesome_rounded),
+                            ).copyWith(
+                              labelText: l10n.pick(
+                                ru: 'Имя ассистентки',
+                                en: 'Assistant name',
+                                uz: 'Yordamchi nomi',
+                              ),
+                              hintText: l10n.pick(
+                                ru: 'Например: MILA, Nova, Atlas',
+                                en: 'For example: MILA, Nova, Atlas',
+                                uz: 'Masalan: MILA, Nova, Atlas',
+                              ),
+                            ),
                         validator: (value) => (value ?? '').trim().isEmpty
-                            ? 'Please choose an assistant name'
+                            ? l10n.pick(
+                                ru: 'Выберите имя ассистентки',
+                                en: 'Please choose an assistant name',
+                                uz: 'Yordamchi nomini tanlang',
+                              )
                             : null,
                       ),
                       const SizedBox(height: 24),
                       Text(
-                        'VOICE',
+                        l10n.pick(ru: 'ГОЛОС', en: 'VOICE', uz: 'OVOZ'),
                         style: text.labelSmall?.copyWith(letterSpacing: 1.5),
                       ),
                       const SizedBox(height: 10),
@@ -156,8 +223,12 @@ class _AssistantSetupScreenState extends ConsumerState<AssistantSetupScreen> {
                         children: [
                           Expanded(
                             child: _VoiceGenderCard(
-                              label: 'Female',
-                              subtitle: 'Warm and clear',
+                              label: l10n.voiceGender('female'),
+                              subtitle: l10n.pick(
+                                ru: 'Тёплый и чистый',
+                                en: 'Warm and clear',
+                                uz: 'Iliq va aniq',
+                              ),
                               icon: Icons.female_rounded,
                               selected:
                                   _voiceGender == AssistantVoiceGender.female,
@@ -170,8 +241,12 @@ class _AssistantSetupScreenState extends ConsumerState<AssistantSetupScreen> {
                           const SizedBox(width: 12),
                           Expanded(
                             child: _VoiceGenderCard(
-                              label: 'Male',
-                              subtitle: 'Calm and confident',
+                              label: l10n.voiceGender('male'),
+                              subtitle: l10n.pick(
+                                ru: 'Спокойный и уверенный',
+                                en: 'Calm and confident',
+                                uz: 'Xotirjam va ishonchli',
+                              ),
                               icon: Icons.male_rounded,
                               selected:
                                   _voiceGender == AssistantVoiceGender.male,
@@ -184,7 +259,11 @@ class _AssistantSetupScreenState extends ConsumerState<AssistantSetupScreen> {
                       ),
                       const SizedBox(height: 24),
                       Text(
-                        'PERSONALITY',
+                        l10n.pick(
+                          ru: 'ХАРАКТЕР',
+                          en: 'PERSONALITY',
+                          uz: 'XARAKTER',
+                        ),
                         style: text.labelSmall?.copyWith(letterSpacing: 1.5),
                       ),
                       const SizedBox(height: 10),
@@ -197,24 +276,6 @@ class _AssistantSetupScreenState extends ConsumerState<AssistantSetupScreen> {
                         ),
                         const SizedBox(height: 10),
                       ],
-                      const SizedBox(height: 24),
-                      Text(
-                        'PRIMARY LANGUAGE',
-                        style: text.labelSmall?.copyWith(letterSpacing: 1.5),
-                      ),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          for (final language in _languages)
-                            MilaChip(
-                              label: language,
-                              active: _language == language,
-                              onTap: () => setState(() => _language = language),
-                            ),
-                        ],
-                      ),
                       const SizedBox(height: 18),
                     ],
                   ),
@@ -222,7 +283,11 @@ class _AssistantSetupScreenState extends ConsumerState<AssistantSetupScreen> {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
                   child: GradientButton(
-                    label: 'Continue',
+                    label: l10n.pick(
+                      ru: 'Продолжить',
+                      en: 'Continue',
+                      uz: 'Davom etish',
+                    ),
                     icon: Icons.arrow_forward_rounded,
                     onPressed: _finish,
                   ),
@@ -266,12 +331,16 @@ class _PersonalityCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  personality.title,
+                  MilaLocalizations.of(
+                    context,
+                  ).personalityTitle(personality.id),
                   style: Theme.of(context).textTheme.titleSmall,
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  personality.subtitle,
+                  MilaLocalizations.of(
+                    context,
+                  ).personalitySubtitle(personality.id),
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],

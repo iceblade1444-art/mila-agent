@@ -52,28 +52,42 @@ abstract final class MilaTheme {
 
     final textTheme = GoogleFonts.interTextTheme(base.textTheme).copyWith(
       displayLarge: GoogleFonts.inter(
-          fontSize: 40, fontWeight: FontWeight.w700, letterSpacing: -1),
+        fontSize: 40,
+        fontWeight: FontWeight.w700,
+        letterSpacing: -1,
+      ),
       headlineLarge: GoogleFonts.inter(
-          fontSize: 28, fontWeight: FontWeight.w600, letterSpacing: -0.5),
+        fontSize: 28,
+        fontWeight: FontWeight.w600,
+        letterSpacing: -0.5,
+      ),
       headlineMedium: GoogleFonts.inter(
-          fontSize: 24, fontWeight: FontWeight.w600, letterSpacing: -0.4),
+        fontSize: 24,
+        fontWeight: FontWeight.w600,
+        letterSpacing: -0.4,
+      ),
       headlineSmall: GoogleFonts.inter(
-          fontSize: 20, fontWeight: FontWeight.w600, letterSpacing: -0.3),
+        fontSize: 20,
+        fontWeight: FontWeight.w600,
+        letterSpacing: -0.3,
+      ),
       titleLarge: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w600),
       titleMedium: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600),
       titleSmall: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600),
       bodyLarge: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w400),
       bodyMedium: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w400),
       bodySmall: GoogleFonts.inter(
-          fontSize: 12,
-          fontWeight: FontWeight.w400,
-          color: MilaColors.textSecondary),
+        fontSize: 12,
+        fontWeight: FontWeight.w400,
+        color: MilaColors.textSecondary,
+      ),
       labelLarge: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w500),
       labelMedium: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w500),
       labelSmall: GoogleFonts.inter(
-          fontSize: 11,
-          fontWeight: FontWeight.w500,
-          color: MilaColors.textSecondary),
+        fontSize: 11,
+        fontWeight: FontWeight.w500,
+        color: MilaColors.textSecondary,
+      ),
     );
 
     return base.copyWith(
@@ -86,17 +100,22 @@ abstract final class MilaTheme {
         elevation: 0,
         centerTitle: true,
         systemOverlayStyle: SystemUiOverlayStyle.light,
-        titleTextStyle:
-            GoogleFonts.inter(fontSize: 17, fontWeight: FontWeight.w600),
+        titleTextStyle: GoogleFonts.inter(
+          fontSize: 17,
+          fontWeight: FontWeight.w600,
+        ),
         iconTheme: const IconThemeData(color: MilaColors.textPrimary),
       ),
-      dividerTheme:
-          const DividerThemeData(color: MilaColors.divider, thickness: 1),
+      dividerTheme: const DividerThemeData(
+        color: MilaColors.divider,
+        thickness: 1,
+      ),
       switchTheme: SwitchThemeData(
-        trackColor: WidgetStateProperty.resolveWith((states) =>
-            states.contains(WidgetState.selected)
-                ? MilaColors.violet
-                : const Color(0xFF2A3040)),
+        trackColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? MilaColors.violet
+              : const Color(0xFF2A3040),
+        ),
         thumbColor: const WidgetStatePropertyAll(Colors.white),
         trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
       ),
@@ -104,11 +123,14 @@ abstract final class MilaTheme {
         filled: true,
         fillColor: const Color(0xFF141926),
         hintStyle: GoogleFonts.inter(
-            color: MilaColors.textTertiary,
-            fontSize: 14,
-            fontWeight: FontWeight.w400),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          color: MilaColors.textTertiary,
+          fontSize: 14,
+          fontWeight: FontWeight.w400,
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(color: MilaColors.cardBorder),
@@ -135,10 +157,12 @@ abstract final class MilaTheme {
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
       ),
-      pageTransitionsTheme: const PageTransitionsTheme(builders: {
-        TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
-        TargetPlatform.iOS: FadeForwardsPageTransitionsBuilder(),
-      }),
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
+          TargetPlatform.iOS: FadeForwardsPageTransitionsBuilder(),
+        },
+      ),
     );
   }
 }

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/i18n/mila_localizations.dart';
 import '../../core/theme/mila_theme.dart';
 import '../../core/widgets/common.dart';
 import '../../core/widgets/voice_orb.dart';
@@ -102,6 +103,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
+    final l10n = context.l10n;
     const googleConfigured = GoogleAuthService.isConfigured;
     return Scaffold(
       body: MilaBackground(
@@ -118,7 +120,17 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   const SizedBox(height: 24),
                   Center(
                     child: Text(
-                      _creating ? 'Create account' : 'Welcome back',
+                      _creating
+                          ? l10n.pick(
+                              ru: 'Создать аккаунт',
+                              en: 'Create account',
+                              uz: 'Akkaunt yaratish',
+                            )
+                          : l10n.pick(
+                              ru: 'С возвращением',
+                              en: 'Welcome back',
+                              uz: 'Xush kelibsiz',
+                            ),
                       style: text.headlineMedium,
                     ),
                   ),
@@ -126,8 +138,16 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   Center(
                     child: Text(
                       _creating
-                          ? 'Set up your local MILA profile'
-                          : 'Sign in to continue',
+                          ? l10n.pick(
+                              ru: 'Настройте локальный профиль MILA',
+                              en: 'Set up your local MILA profile',
+                              uz: 'Mahalliy MILA profilingizni sozlang',
+                            )
+                          : l10n.pick(
+                              ru: 'Войдите, чтобы продолжить',
+                              en: 'Sign in to continue',
+                              uz: 'Davom etish uchun kiring',
+                            ),
                       style: text.bodyMedium?.copyWith(
                         color: MilaColors.textSecondary,
                       ),
@@ -135,18 +155,33 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   ),
                   const SizedBox(height: 32),
                   if (_creating) ...[
-                    Text('Your name', style: text.labelMedium),
+                    Text(
+                      l10n.pick(
+                        ru: 'Ваше имя',
+                        en: 'Your name',
+                        uz: 'Ismingiz',
+                      ),
+                      style: text.labelMedium,
+                    ),
                     const SizedBox(height: 8),
                     TextFormField(
                       controller: _name,
                       keyboardType: TextInputType.name,
                       autofillHints: const [AutofillHints.name],
-                      decoration: const InputDecoration(
-                        hintText: 'How should MILA call you?',
+                      decoration: InputDecoration(
+                        hintText: l10n.pick(
+                          ru: 'Как MILA должна вас называть?',
+                          en: 'How should MILA call you?',
+                          uz: 'MILA sizni qanday chaqirsin?',
+                        ),
                       ),
                       validator: (v) => (v ?? '').trim().isNotEmpty
                           ? null
-                          : 'Enter your name',
+                          : l10n.pick(
+                              ru: 'Введите имя',
+                              en: 'Enter your name',
+                              uz: 'Ismingizni kiriting',
+                            ),
                     ),
                     const SizedBox(height: 16),
                   ],
@@ -162,15 +197,26 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                     validator: (v) =>
                         v != null && v.contains('@') && v.contains('.')
                         ? null
-                        : 'Enter a valid email',
+                        : l10n.pick(
+                            ru: 'Введите корректный email',
+                            en: 'Enter a valid email',
+                            uz: 'To\'g\'ri email kiriting',
+                          ),
                   ),
                   const SizedBox(height: 16),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Password', style: text.labelMedium),
                       Text(
-                        'Forgot?',
+                        l10n.pick(ru: 'Пароль', en: 'Password', uz: 'Parol'),
+                        style: text.labelMedium,
+                      ),
+                      Text(
+                        l10n.pick(
+                          ru: 'Забыли?',
+                          en: 'Forgot?',
+                          uz: 'Unutdingizmi?',
+                        ),
                         style: text.labelMedium?.copyWith(
                           color: MilaColors.cyan,
                         ),
@@ -182,12 +228,23 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                     controller: _password,
                     obscureText: true,
                     decoration: const InputDecoration(hintText: '••••••••••'),
-                    validator: (v) =>
-                        (v ?? '').length >= 6 ? null : 'At least 6 characters',
+                    validator: (v) => (v ?? '').length >= 6
+                        ? null
+                        : l10n.pick(
+                            ru: 'Минимум 6 символов',
+                            en: 'At least 6 characters',
+                            uz: 'Kamida 6 belgi',
+                          ),
                   ),
                   const SizedBox(height: 28),
                   GradientButton(
-                    label: _creating ? 'Create Account' : 'Sign In',
+                    label: _creating
+                        ? l10n.pick(
+                            ru: 'Создать аккаунт',
+                            en: 'Create Account',
+                            uz: 'Akkaunt yaratish',
+                          )
+                        : l10n.pick(ru: 'Войти', en: 'Sign In', uz: 'Kirish'),
                     busy: _localBusy,
                     onPressed: _localBusy ? null : () => unawaited(_submit()),
                   ),
@@ -199,7 +256,11 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 12),
                           child: Text(
-                            'or continue with',
+                            l10n.pick(
+                              ru: 'или продолжить через',
+                              en: 'or continue with',
+                              uz: 'yoki davom etish',
+                            ),
                             style: text.labelSmall,
                           ),
                         ),
@@ -209,8 +270,16 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                     const SizedBox(height: 20),
                     GhostButton(
                       label: _googleBusy
-                          ? 'Connecting to Google...'
-                          : 'Continue with Google',
+                          ? l10n.pick(
+                              ru: 'Подключаю Google...',
+                              en: 'Connecting to Google...',
+                              uz: 'Google ulanmoqda...',
+                            )
+                          : l10n.pick(
+                              ru: 'Продолжить с Google',
+                              en: 'Continue with Google',
+                              uz: 'Google orqali davom etish',
+                            ),
                       icon: Icons.g_mobiledata_rounded,
                       onPressed: _googleBusy ? null : _signInWithGoogle,
                     ),
@@ -222,12 +291,30 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                       child: Text.rich(
                         TextSpan(
                           text: _creating
-                              ? 'Already have an account? '
-                              : 'New to MILA? ',
+                              ? l10n.pick(
+                                  ru: 'Уже есть аккаунт? ',
+                                  en: 'Already have an account? ',
+                                  uz: 'Akkauntingiz bormi? ',
+                                )
+                              : l10n.pick(
+                                  ru: 'Впервые в MILA? ',
+                                  en: 'New to MILA? ',
+                                  uz: 'MILA’da yangimisiz? ',
+                                ),
                           style: text.bodySmall,
                           children: [
                             TextSpan(
-                              text: _creating ? 'Sign in' : 'Create account',
+                              text: _creating
+                                  ? l10n.pick(
+                                      ru: 'Войти',
+                                      en: 'Sign in',
+                                      uz: 'Kirish',
+                                    )
+                                  : l10n.pick(
+                                      ru: 'Создать аккаунт',
+                                      en: 'Create account',
+                                      uz: 'Akkaunt yaratish',
+                                    ),
                               style: text.bodySmall?.copyWith(
                                 color: MilaColors.cyan,
                               ),

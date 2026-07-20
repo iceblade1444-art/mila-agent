@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/i18n/mila_localizations.dart';
 import '../../core/theme/mila_theme.dart';
 import '../../core/widgets/common.dart';
 import '../../core/config/app_config.dart';
@@ -104,6 +105,7 @@ class IntegrationsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final text = Theme.of(context).textTheme;
+    final l10n = context.l10n;
     final configs = ref.watch(integrationConfigsProvider);
     final service = ref.read(integrationServiceProvider);
     final keys = ref.watch(providerKeysProvider).value ?? const <String>{};
@@ -114,6 +116,57 @@ class IntegrationsScreen extends ConsumerWidget {
       // Launcher-based integrations are always ready on a phone.
       _ => true,
     };
+
+    String subtitleFor(_Item item) {
+      if (connected(item) &&
+          (item.kind == _Kind.telegram ||
+              item.kind == _Kind.webhook ||
+              item.kind == _Kind.aiProvider)) {
+        return l10n.pick(ru: 'Подключено', en: 'Connected', uz: 'Ulangan');
+      }
+      return switch (item.name) {
+        'Telegram' => l10n.pick(
+          ru: 'Реальная отправка через вашего бота',
+          en: 'Real send via your bot',
+          uz: 'Bot orqali haqiqiy yuborish',
+        ),
+        'Gmail' => l10n.pick(
+          ru: 'Черновики открываются в почтовом приложении',
+          en: 'Drafts open in your mail app',
+          uz: 'Draftlar email ilovasida ochiladi',
+        ),
+        'Google Calendar' => l10n.pick(
+          ru: 'События в календаре устройства',
+          en: 'Events in the device calendar',
+          uz: 'Tadbirlar qurilma kalendarida',
+        ),
+        'WhatsApp' => l10n.pick(
+          ru: 'Сообщения с готовым текстом',
+          en: 'Prefilled messages',
+          uz: 'Oldindan to\'ldirilgan xabarlar',
+        ),
+        'Slack' => l10n.pick(
+          ru: 'Входящий webhook',
+          en: 'Incoming webhook',
+          uz: 'Kiruvchi webhook',
+        ),
+        'ERP / CRM' => l10n.pick(
+          ru: 'Webhook: n8n, Zapier, ваш API',
+          en: 'Webhook: n8n, Zapier, your API',
+          uz: 'Webhook: n8n, Zapier, APIʼingiz',
+        ),
+        'Gemini' => l10n.pick(
+          ru: 'AI-провайдер · голос',
+          en: 'AI provider · voice',
+          uz: 'AI provayder · ovoz',
+        ),
+        _ => l10n.pick(
+          ru: 'AI-провайдер',
+          en: 'AI provider',
+          uz: 'AI provayder',
+        ),
+      };
+    }
 
     void snack(String message) => ScaffoldMessenger.of(
       context,
@@ -177,7 +230,15 @@ class IntegrationsScreen extends ConsumerWidget {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Integrations')),
+      appBar: AppBar(
+        title: Text(
+          l10n.pick(
+            ru: 'Интеграции',
+            en: 'Integrations',
+            uz: 'Integratsiyalar',
+          ),
+        ),
+      ),
       body: MilaBackground(
         glowTop: false,
         child: ListView(
@@ -185,7 +246,14 @@ class IntegrationsScreen extends ConsumerWidget {
           physics: const BouncingScrollPhysics(),
           children: [
             Center(
-              child: Text('Connect your favorite tools', style: text.bodySmall),
+              child: Text(
+                l10n.pick(
+                  ru: 'Подключите нужные инструменты',
+                  en: 'Connect your favorite tools',
+                  uz: 'Kerakli vositalarni ulang',
+                ),
+                style: text.bodySmall,
+              ),
             ),
             const SizedBox(height: 20),
             for (final item in _items)
@@ -204,12 +272,7 @@ class IntegrationsScreen extends ConsumerWidget {
                             Text(item.name, style: text.titleSmall),
                             const SizedBox(height: 3),
                             Text(
-                              connected(item) &&
-                                      (item.kind == _Kind.telegram ||
-                                          item.kind == _Kind.webhook ||
-                                          item.kind == _Kind.aiProvider)
-                                  ? 'Connected'
-                                  : item.subtitle,
+                              subtitleFor(item),
                               style: text.bodySmall?.copyWith(
                                 color:
                                     connected(item) &&
@@ -254,10 +317,20 @@ class IntegrationsScreen extends ConsumerWidget {
                         ),
                         child: Text(
                           switch (item.kind) {
-                            _Kind.mailApp ||
-                            _Kind.whatsApp ||
-                            _Kind.calendar => 'Test',
-                            _ => connected(item) ? 'Manage' : 'Connect',
+                            _Kind.mailApp || _Kind.whatsApp || _Kind.calendar =>
+                              l10n.pick(ru: 'Тест', en: 'Test', uz: 'Test'),
+                            _ =>
+                              connected(item)
+                                  ? l10n.pick(
+                                      ru: 'Управлять',
+                                      en: 'Manage',
+                                      uz: 'Boshqarish',
+                                    )
+                                  : l10n.pick(
+                                      ru: 'Подключить',
+                                      en: 'Connect',
+                                      uz: 'Ulash',
+                                    ),
                           },
                           style: text.labelMedium?.copyWith(
                             color: Colors.white,
@@ -270,9 +343,11 @@ class IntegrationsScreen extends ConsumerWidget {
               ),
             const SizedBox(height: 6),
             Text(
-              'Telegram, Slack and ERP/CRM deliver messages directly from the app. '
-              'Gmail, WhatsApp and Calendar hand off to the apps on your phone. '
-              'AI providers are configured in Settings → AI Providers.',
+              l10n.pick(
+                ru: 'Telegram, Slack и ERP/CRM отправляют сообщения прямо из приложения. Gmail, WhatsApp и Calendar передают действие приложениям телефона. AI-провайдеры настраиваются в Настройки → AI-провайдеры.',
+                en: 'Telegram, Slack and ERP/CRM deliver messages directly from the app. Gmail, WhatsApp and Calendar hand off to the apps on your phone. AI providers are configured in Settings → AI Providers.',
+                uz: 'Telegram, Slack va ERP/CRM xabarlarni ilovadan yuboradi. Gmail, WhatsApp va Calendar ishni telefondagi ilovalarga uzatadi. AI provayderlar Sozlamalar → AI provayderlar ichida sozlanadi.',
+              ),
               style: text.bodySmall,
               textAlign: TextAlign.center,
             ),
@@ -305,6 +380,7 @@ Future<void> _configSheet(
     builder: (sheetContext) => StatefulBuilder(
       builder: (sheetContext, setState) {
         final text = Theme.of(sheetContext).textTheme;
+        final l10n = sheetContext.l10n;
         return Padding(
           padding: EdgeInsets.only(
             left: 24,
@@ -334,7 +410,11 @@ Future<void> _configSheet(
                 children: [
                   Expanded(
                     child: GhostButton(
-                      label: 'Save & Test',
+                      label: l10n.pick(
+                        ru: 'Сохранить и проверить',
+                        en: 'Save & Test',
+                        uz: 'Saqlash va tekshirish',
+                      ),
                       icon: Icons.wifi_tethering_rounded,
                       onPressed: busy
                           ? null
@@ -357,7 +437,11 @@ Future<void> _configSheet(
                   const SizedBox(width: 12),
                   Expanded(
                     child: GradientButton(
-                      label: 'Save',
+                      label: l10n.pick(
+                        ru: 'Сохранить',
+                        en: 'Save',
+                        uz: 'Saqlash',
+                      ),
                       busy: busy,
                       onPressed: () async {
                         await onSave({

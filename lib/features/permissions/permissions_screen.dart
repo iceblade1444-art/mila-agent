@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
 
+import '../../core/i18n/mila_localizations.dart';
 import '../../core/theme/mila_theme.dart';
 import '../../core/widgets/common.dart';
 import '../../services/storage/stores.dart';
@@ -74,41 +75,66 @@ class _PermissionsScreenState extends ConsumerState<PermissionsScreen> {
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    const items = [
+    final l10n = context.l10n;
+    final items = [
       (
         'mic',
         Icons.mic_none_rounded,
         MilaColors.cyan,
-        'Microphone',
-        'Required for voice input'
+        l10n.pick(ru: 'Микрофон', en: 'Microphone', uz: 'Mikrofon'),
+        l10n.pick(
+          ru: 'Нужен для голосового ввода',
+          en: 'Required for voice input',
+          uz: 'Ovozli kiritish uchun kerak',
+        ),
       ),
       (
         'notifications',
         Icons.notifications_none_rounded,
         MilaColors.violet,
-        'Notifications',
-        'Send important updates'
+        l10n.pick(
+          ru: 'Уведомления',
+          en: 'Notifications',
+          uz: 'Bildirishnomalar',
+        ),
+        l10n.pick(
+          ru: 'Отправлять важные обновления',
+          en: 'Send important updates',
+          uz: 'Muhim yangiliklarni yuborish',
+        ),
       ),
       (
         'memory',
         Icons.bookmark_outline_rounded,
         MilaColors.purple,
-        'Memory',
-        'Remember facts and preferences'
+        l10n.pick(ru: 'Память', en: 'Memory', uz: 'Xotira'),
+        l10n.pick(
+          ru: 'Запоминать факты и предпочтения',
+          en: 'Remember facts and preferences',
+          uz: 'Faktlar va afzalliklarni eslash',
+        ),
       ),
       (
         'calendar',
         Icons.calendar_today_outlined,
         MilaColors.cyan,
-        'Calendar',
-        'Manage events and reminders'
+        l10n.pick(ru: 'Календарь', en: 'Calendar', uz: 'Kalendar'),
+        l10n.pick(
+          ru: 'Управлять событиями и напоминаниями',
+          en: 'Manage events and reminders',
+          uz: 'Tadbirlar va eslatmalarni boshqarish',
+        ),
       ),
       (
         'contacts',
         Icons.person_outline_rounded,
         MilaColors.pink,
-        'Contacts',
-        'Find and connect with people'
+        l10n.pick(ru: 'Контакты', en: 'Contacts', uz: 'Kontaktlar'),
+        l10n.pick(
+          ru: 'Находить людей и связываться с ними',
+          en: 'Find and connect with people',
+          uz: 'Odamlarni topish va bog\'lanish',
+        ),
       ),
     ];
 
@@ -121,12 +147,22 @@ class _PermissionsScreenState extends ConsumerState<PermissionsScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const SizedBox(height: 32),
-                Text('MILA needs access to\nwork at its best',
-                    textAlign: TextAlign.center,
-                    style: text.headlineMedium),
+                Text(
+                  l10n.pick(
+                    ru: 'MILA нужен доступ,\nчтобы работать лучше',
+                    en: 'MILA needs access to\nwork at its best',
+                    uz: 'MILA yaxshi ishlashi uchun\nruxsatlar kerak',
+                  ),
+                  textAlign: TextAlign.center,
+                  style: text.headlineMedium,
+                ),
                 const SizedBox(height: 10),
                 Text(
-                  'You\'re in control. You can change these anytime in settings.',
+                  l10n.pick(
+                    ru: 'Вы всё контролируете. Это можно изменить в настройках.',
+                    en: 'You\'re in control. You can change these anytime in settings.',
+                    uz: 'Nazorat sizda. Bularni sozlamalarda o\'zgartira olasiz.',
+                  ),
                   textAlign: TextAlign.center,
                   style: text.bodySmall,
                 ),
@@ -166,7 +202,11 @@ class _PermissionsScreenState extends ConsumerState<PermissionsScreen> {
                   ),
                 ),
                 GradientButton(
-                  label: 'Continue',
+                  label: l10n.pick(
+                    ru: 'Продолжить',
+                    en: 'Continue',
+                    uz: 'Davom etish',
+                  ),
                   onPressed: () {
                     ref
                         .read(settingsProvider.notifier)
