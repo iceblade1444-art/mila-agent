@@ -164,6 +164,84 @@ class GeminiTextProvider implements LlmProvider {
   }
 }
 
+/// Gemini text provider backed by MILA's authenticated server proxy.
+/// Provider keys stay on the server; the phone holds only a revocable session.
+class MilaServerGeminiProvider implements LlmProvider {
+  MilaServerGeminiProvider({
+    required this.baseUrl,
+    required this.sessionToken,
+    required this.model,
+    http.Client? client,
+  }) : _client = client ?? http.Client();
+
+  final String baseUrl;
+  final String sessionToken;
+  final String model;
+  final http.Client _client;
+
+  @override
+  Stream<String> streamChat({
+    required List<LlmMessage> messages,
+    required String systemPrompt,
+  }) async* {
+    if (baseUrl.trim().isEmpty || sessionToken.trim().isEmpty) {
+      throw LlmException('Connect MILA to Agentic OS in Settings first.');
+    }
+    final root = baseUrl.endsWith('/')
+        ? baseUrl.substring(0, baseUrl.length - 1)
+        : baseUrl;
+    final response = await _client
+        .post(
+          Uri.parse('$root/v1/gemini/chat'),
+          headers: {
+            'Authorization': 'Bearer $sessionToken',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'model': model,
+            'systemPrompt': systemPrompt,
+            'messages': [
+              for (final message in messages)
+                {
+                  'role': message.role,
+                  'content': message.content,
+                  'attachments': [
+                    for (final attachment in message.attachments)
+                      {
+                        'mimeType': attachment.mimeType,
+                        'data': base64Encode(attachment.bytes),
+                      },
+                  ],
+                },
+            ],
+          }),
+        )
+        .timeout(const Duration(seconds: 45));
+    final json = _decodeServerJson(response.body);
+    if (response.statusCode == 401) {
+      throw LlmException('MILA session expired. Reconnect it in Settings.');
+    }
+    if (response.statusCode == 402) {
+      throw LlmException('An active subscription is required.');
+    }
+    final text = json['text'] as String? ?? '';
+    if (response.statusCode != 200 || text.isEmpty) {
+      throw LlmException(
+        json['error'] as String? ?? 'MILA server could not complete the chat.',
+      );
+    }
+    yield text;
+  }
+}
+
+Map<String, dynamic> _decodeServerJson(String body) {
+  try {
+    return (jsonDecode(body) as Map).cast<String, dynamic>();
+  } catch (_) {
+    return const {};
+  }
+}
+
 class AnthropicProvider implements LlmProvider {
   AnthropicProvider({
     required this.apiKey,

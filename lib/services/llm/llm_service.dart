@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/config/app_config.dart';
 import '../../data/models.dart';
 import '../agentic/agentic_os_service.dart';
 import '../integrations/integration_service.dart';
@@ -38,6 +39,17 @@ class LlmService {
   Future<LlmProvider> _activeProvider() async {
     final settings = _ref.read(settingsProvider);
     final secure = _ref.read(secureStoreProvider);
+    final sessionToken =
+        await secure.read(SecureStore.openAiAccountToken) ?? '';
+    if (sessionToken.isNotEmpty) {
+      return MilaServerGeminiProvider(
+        baseUrl: AppConfig.configuredBackendUrl(
+          await secure.read(SecureStore.milaBackendUrl),
+        ),
+        sessionToken: sessionToken,
+        model: settings.geminiModel,
+      );
+    }
     switch (settings.provider) {
       case LlmProviderKind.openaiAccount:
       case LlmProviderKind.openai:
