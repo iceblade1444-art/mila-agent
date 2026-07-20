@@ -10,6 +10,7 @@ import '../../services/auth/mila_account_service.dart';
 import '../../services/soul/soul_service.dart';
 import '../../services/storage/stores.dart';
 import '../../services/voice/voice_controller.dart';
+import '../../services/voice/gemini_live_token_service.dart';
 
 /// AI provider configuration. For now MILA runs on Gemini only; the MILA
 /// backend is still used for app updates and future server-side features.
@@ -46,7 +47,10 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
     _geminiKey.text = await secure.read(SecureStore.geminiKey) ?? '';
     _geminiModel.text = settings.geminiModel;
     _liveModel.text = settings.geminiLiveModel;
-    _accountLabel = await secure.read(SecureStore.openAiAccountLabel) ?? '';
+    final savedToken = await secure.read(SecureStore.openAiAccountToken) ?? '';
+    _accountLabel = savedToken.isEmpty
+        ? ''
+        : await secure.read(SecureStore.openAiAccountLabel) ?? '';
     await secure.write(SecureStore.openAiKey, '');
     if (settings.provider != LlmProviderKind.gemini) {
       ref
@@ -69,6 +73,22 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
       await secure.write(SecureStore.milaBackendUrl, _serverUrl.text);
       await secure.write(SecureStore.openAiAccountToken, session.token);
       await secure.write(SecureStore.openAiAccountLabel, session.label);
+      final storedToken =
+          await secure.read(SecureStore.openAiAccountToken) ?? '';
+      if (storedToken != session.token) {
+        throw StateError('Could not save the MILA session on this device.');
+      }
+      String voiceCheck = '';
+      try {
+        await GeminiLiveTokenService(
+          baseUrl: AppConfig.configuredBackendUrl(
+            await secure.read(SecureStore.milaBackendUrl),
+          ),
+          sessionToken: storedToken,
+        ).createToken();
+      } on GeminiLiveTokenException catch (error) {
+        voiceCheck = ' Connected, but voice needs attention: ${error.message}';
+      }
       if (!mounted) return;
       setState(() {
         _accountLabel = session.label;
@@ -76,9 +96,9 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
       });
       await ref.read(agenticTasksProvider.notifier).refresh();
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Connected as ${session.label}.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Connected as ${session.label}.$voiceCheck')),
+      );
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -152,6 +172,7 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
 
     Widget geminiKeyField() {
       final hasOverride = _geminiKey.text.trim().isNotEmpty;
+      final secureVoiceConnected = _accountLabel.isNotEmpty;
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -159,28 +180,30 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
           const SizedBox(height: 10),
           GlassCard(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            borderColor: AppConfig.hasBundledGeminiKey
+            borderColor: secureVoiceConnected || AppConfig.hasBundledGeminiKey
                 ? MilaColors.success.withValues(alpha: 0.34)
                 : MilaColors.cardBorder,
-            color: AppConfig.hasBundledGeminiKey
+            color: secureVoiceConnected || AppConfig.hasBundledGeminiKey
                 ? MilaColors.success.withValues(alpha: 0.08)
                 : null,
             child: Row(
               children: [
                 Icon(
-                  AppConfig.hasBundledGeminiKey
+                  secureVoiceConnected || AppConfig.hasBundledGeminiKey
                       ? Icons.verified_user_outlined
                       : Icons.key_off_outlined,
-                  color: AppConfig.hasBundledGeminiKey
+                  color: secureVoiceConnected || AppConfig.hasBundledGeminiKey
                       ? MilaColors.success
                       : MilaColors.textTertiary,
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    AppConfig.hasBundledGeminiKey
+                    secureVoiceConnected
+                        ? 'Secure Gemini access via MILA server'
+                        : AppConfig.hasBundledGeminiKey
                         ? 'Integrated Gemini key is active'
-                        : 'No integrated Gemini key in this build',
+                        : 'Connect MILA to enable secure Gemini access',
                     style: text.bodyMedium,
                   ),
                 ),
@@ -189,7 +212,9 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
           ),
           const SizedBox(height: 12),
           Text(
-            hasOverride ? 'Developer override key' : 'Developer override',
+            hasOverride
+                ? 'Direct Gemini key override'
+                : 'Direct Gemini key (optional)',
             style: text.labelSmall,
           ),
           const SizedBox(height: 6),
@@ -199,9 +224,7 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
             autocorrect: false,
             enableSuggestions: false,
             decoration: InputDecoration(
-              hintText: AppConfig.hasBundledGeminiKey
-                  ? 'Optional: override integrated key'
-                  : 'AIza...',
+              hintText: 'Only for a separate developer key',
               suffixIcon: IconButton(
                 icon: Icon(
                   _showGeminiKey
@@ -292,7 +315,7 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
                     enableSuggestions: false,
                     keyboardType: TextInputType.url,
                     decoration: const InputDecoration(
-                      hintText: 'https://agent.milanapremium.uz',
+                      hintText: 'https://agent.milanapremium.uz/mila',
                     ),
                   ),
                   const SizedBox(height: 14),
