@@ -495,6 +495,28 @@ export function createMilaServer(options = {}) {
         return;
       }
 
+      if (req.method === 'POST' && url.pathname === '/v1/gemini/chat') {
+        const session = requireSession(req, res);
+        if (!session) return;
+
+        if (cfg.requireActiveSubscription) {
+          const subscription = db.getSubscription(session.label);
+          if (!subscription || subscription.activeUntil < Date.now()) {
+            sendJson(res, 402, {error: 'Active subscription required'});
+            return;
+          }
+        }
+
+        if (!cfg.geminiApiKey) {
+          sendJson(res, 500, {error: 'GEMINI_API_KEY is not configured'});
+          return;
+        }
+
+        const body = await readJson(req);
+        sendJson(res, 200, await generateGeminiChat({body, cfg, fetchImpl}));
+        return;
+      }
+
       if (req.method === 'POST' && url.pathname === '/v1/voice/token') {
         const session = getSession(req);
         if (!session) {
@@ -571,6 +593,69 @@ async function createGeminiLiveToken({cfg, fetchImpl}) {
     expiresAt: body.expireTime || null,
     newSessionExpiresAt: body.newSessionExpireTime || null,
   };
+}
+
+async function generateGeminiChat({body, cfg, fetchImpl}) {
+  const model = String(body.model || 'gemini-2.5-flash').trim();
+  if (!/^[a-zA-Z0-9._-]{1,100}$/.test(model)) {
+    const error = new Error('Invalid Gemini model');
+    error.status = 400;
+    throw error;
+  }
+
+  const messages = Array.isArray(body.messages) ? body.messages.slice(-24) : [];
+  const contents = messages
+    .map((message) => {
+      const attachments = Array.isArray(message.attachments)
+        ? message.attachments.slice(0, 4)
+        : [];
+      return {
+        role: message.role === 'assistant' ? 'model' : 'user',
+        parts: [
+          ...attachments
+            .filter((item) => typeof item?.data === 'string' && typeof item?.mimeType === 'string')
+            .map((item) => ({inlineData: {mimeType: item.mimeType, data: item.data}})),
+          {text: String(message.content || '').slice(0, 30000)},
+        ],
+      };
+    })
+    .filter((message) => message.parts.some((part) => part.text || part.inlineData));
+  if (!contents.length) {
+    const error = new Error('A chat message is required');
+    error.status = 400;
+    throw error;
+  }
+
+  const upstream = await fetchImpl(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+    {
+      method: 'POST',
+      headers: {
+        'x-goog-api-key': cfg.geminiApiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        ...(body.systemPrompt ? {systemInstruction: {parts: [{text: String(body.systemPrompt).slice(0, 30000)}]}} : {}),
+        contents,
+      }),
+    },
+  );
+  const response = await upstream.json().catch(() => ({}));
+  if (!upstream.ok) {
+    const error = new Error(response?.error?.message || `Gemini error ${upstream.status}`);
+    error.status = upstream.status;
+    throw error;
+  }
+  const text = (response.candidates?.[0]?.content?.parts || [])
+    .map((part) => String(part.text || ''))
+    .join('')
+    .trim();
+  if (!text) {
+    const error = new Error('Gemini returned an empty response');
+    error.status = 502;
+    throw error;
+  }
+  return {text, model};
 }
 
 async function streamOpenAiChat({body, res, cfg, fetchImpl}) {

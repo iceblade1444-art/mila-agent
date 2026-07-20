@@ -140,6 +140,43 @@ test('admin can list and revoke a specific mobile device without exposing tokens
   );
 });
 
+test('connected mobile can use the secure Gemini text proxy without receiving the provider key', async () => {
+  const fetchImpl = async (url, request = {}) => {
+    assert.match(url, /gemini-2\.5-flash:generateContent$/);
+    assert.equal(request.headers['x-goog-api-key'], 'gemini-secret');
+    const body = JSON.parse(request.body);
+    assert.equal(body.contents[0].parts[0].text, 'Hello');
+    return Response.json({
+      candidates: [{content: {parts: [{text: 'Hello from MILA'}]}}],
+    });
+  };
+  await withServer(
+    {
+      fetchImpl,
+      config: {adminToken: 'admin-secret', geminiApiKey: 'gemini-secret'},
+    },
+    async (baseUrl) => {
+      const {token} = await connectMobile(baseUrl);
+      const response = await fetch(`${baseUrl}/v1/gemini/chat`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gemini-2.5-flash',
+          systemPrompt: 'Be helpful',
+          messages: [{role: 'user', content: 'Hello'}],
+        }),
+      });
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), {
+        text: 'Hello from MILA', model: 'gemini-2.5-flash',
+      });
+    },
+  );
+});
+
 test('mobile session synchronizes tasks through the private Agentic OS proxy', async () => {
   const calls = [];
   let memoryContent = '';
