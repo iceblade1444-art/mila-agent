@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/i18n/mila_localizations.dart';
 import '../../core/theme/mila_theme.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models.dart';
@@ -22,6 +23,7 @@ class SettingsScreen extends ConsumerWidget {
     final text = Theme.of(context).textTheme;
     final profile = ref.watch(profileProvider);
     final settings = ref.watch(settingsProvider);
+    final l10n = context.l10n;
     final providerLabel = switch (settings.provider) {
       LlmProviderKind.openaiAccount || LlmProviderKind.openai => 'Gemini',
       LlmProviderKind.gemini => 'Gemini',
@@ -45,19 +47,27 @@ class SettingsScreen extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                'Assistant Personality',
+                l10n.pick(
+                  ru: 'Характер ассистентки',
+                  en: 'Assistant Personality',
+                  uz: 'Yordamchi xarakteri',
+                ),
                 style: Theme.of(sheetContext).textTheme.titleMedium,
               ),
               const SizedBox(height: 6),
               Text(
-                'Describe how MILA should talk and behave.',
+                l10n.pick(
+                  ru: 'Опишите, как MILA должна говорить и вести себя.',
+                  en: 'Describe how MILA should talk and behave.',
+                  uz: 'MILA qanday gapirishi va o\'zini tutishini yozing.',
+                ),
                 style: Theme.of(sheetContext).textTheme.bodySmall,
               ),
               const SizedBox(height: 14),
               TextField(controller: controller, maxLines: 4, autofocus: true),
               const SizedBox(height: 14),
               GradientButton(
-                label: 'Save',
+                label: l10n.pick(ru: 'Сохранить', en: 'Save', uz: 'Saqlash'),
                 onPressed: () => Navigator.pop(sheetContext, true),
               ),
             ],
@@ -75,7 +85,7 @@ class SettingsScreen extends ConsumerWidget {
     }
 
     Future<void> pickLanguage() async {
-      const languages = ['Русский', 'English', 'O\'zbekcha'];
+      const languages = supportedMilaLanguageNames;
       final choice = await showModalBottomSheet<String>(
         context: context,
         builder: (sheetContext) => SafeArea(
@@ -106,29 +116,57 @@ class SettingsScreen extends ConsumerWidget {
         final update = await ref.read(updateServiceProvider).check();
         if (!context.mounted) return;
         if (!update.updateAvailable) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('MILA is up to date.')));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                l10n.pick(
+                  ru: 'MILA уже обновлена.',
+                  en: 'MILA is up to date.',
+                  uz: 'MILA allaqachon yangilangan.',
+                ),
+              ),
+            ),
+          );
           return;
         }
         final open = await showDialog<bool>(
           context: context,
           builder: (dialogContext) => AlertDialog(
             backgroundColor: const Color(0xFF141926),
-            title: Text('Update ${update.latestVersion} available'),
+            title: Text(
+              l10n.pick(
+                ru: 'Доступно обновление ${update.latestVersion}',
+                en: 'Update ${update.latestVersion} available',
+                uz: '${update.latestVersion} yangilanishi mavjud',
+              ),
+            ),
             content: Text(
               update.notes.isEmpty
-                  ? 'A newer version of MILA is available.'
+                  ? l10n.pick(
+                      ru: 'Доступна новая версия MILA.',
+                      en: 'A newer version of MILA is available.',
+                      uz: 'MILAning yangi versiyasi mavjud.',
+                    )
                   : update.notes,
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(dialogContext, false),
-                child: const Text('Later'),
+                child: Text(
+                  l10n.pick(ru: 'Позже', en: 'Later', uz: 'Keyinroq'),
+                ),
               ),
               TextButton(
                 onPressed: () => Navigator.pop(dialogContext, true),
-                child: Text(update.updateRequired ? 'Update' : 'Download'),
+                child: Text(
+                  update.updateRequired
+                      ? l10n.pick(ru: 'Обновить', en: 'Update', uz: 'Yangilash')
+                      : l10n.pick(
+                          ru: 'Скачать',
+                          en: 'Download',
+                          uz: 'Yuklab olish',
+                        ),
+                ),
               ),
             ],
           ),
@@ -141,9 +179,13 @@ class SettingsScreen extends ConsumerWidget {
         }
       } catch (e) {
         if (!context.mounted) return;
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Could not check updates: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '${l10n.pick(ru: 'Не удалось проверить обновления', en: 'Could not check updates', uz: 'Yangilanishlarni tekshirib bo\'lmadi')}: $e',
+            ),
+          ),
+        );
       }
     }
 
@@ -198,19 +240,23 @@ class SettingsScreen extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                'Your name',
+                l10n.pick(ru: 'Ваше имя', en: 'Your name', uz: 'Ismingiz'),
                 style: Theme.of(sheetContext).textTheme.titleMedium,
               ),
               const SizedBox(height: 6),
               Text(
-                'MILA will address you by this name.',
+                l10n.pick(
+                  ru: 'MILA будет обращаться к вам по этому имени.',
+                  en: 'MILA will address you by this name.',
+                  uz: 'MILA sizga shu ism bilan murojaat qiladi.',
+                ),
                 style: Theme.of(sheetContext).textTheme.bodySmall,
               ),
               const SizedBox(height: 14),
               TextField(controller: controller, autofocus: true),
               const SizedBox(height: 14),
               GradientButton(
-                label: 'Save',
+                label: l10n.pick(ru: 'Сохранить', en: 'Save', uz: 'Saqlash'),
                 onPressed: () => Navigator.pop(sheetContext, true),
               ),
             ],
@@ -241,19 +287,27 @@ class SettingsScreen extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                'Assistant name',
+                l10n.pick(
+                  ru: 'Имя ассистентки',
+                  en: 'Assistant name',
+                  uz: 'Yordamchi nomi',
+                ),
                 style: Theme.of(sheetContext).textTheme.titleMedium,
               ),
               const SizedBox(height: 6),
               Text(
-                'This name becomes part of the assistant soul.',
+                l10n.pick(
+                  ru: 'Это имя станет частью личности ассистентки.',
+                  en: 'This name becomes part of the assistant soul.',
+                  uz: 'Bu nom yordamchining shaxsiyatiga kiradi.',
+                ),
                 style: Theme.of(sheetContext).textTheme.bodySmall,
               ),
               const SizedBox(height: 14),
               TextField(controller: controller, autofocus: true),
               const SizedBox(height: 14),
               GradientButton(
-                label: 'Save',
+                label: l10n.pick(ru: 'Сохранить', en: 'Save', uz: 'Saqlash'),
                 onPressed: () => Navigator.pop(sheetContext, true),
               ),
             ],
@@ -270,7 +324,15 @@ class SettingsScreen extends ConsumerWidget {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Profile & Settings')),
+      appBar: AppBar(
+        title: Text(
+          l10n.pick(
+            ru: 'Профиль и настройки',
+            en: 'Profile & Settings',
+            uz: 'Profil va sozlamalar',
+          ),
+        ),
+      ),
       body: MilaBackground(
         glowTop: false,
         child: ListView(
@@ -302,7 +364,13 @@ class SettingsScreen extends ConsumerWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          profile.name.isEmpty ? 'MILA user' : profile.name,
+                          profile.name.isEmpty
+                              ? l10n.pick(
+                                  ru: 'Пользователь MILA',
+                                  en: 'MILA user',
+                                  uz: 'MILA foydalanuvchisi',
+                                )
+                              : profile.name,
                           style: text.titleMedium,
                         ),
                         const SizedBox(height: 2),
@@ -318,7 +386,11 @@ class SettingsScreen extends ConsumerWidget {
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Text(
-                            'Local profile',
+                            l10n.pick(
+                              ru: 'Локальный профиль',
+                              en: 'Local profile',
+                              uz: 'Mahalliy profil',
+                            ),
                             style: text.labelSmall?.copyWith(
                               color: Colors.white,
                               fontSize: 10,
@@ -335,42 +407,66 @@ class SettingsScreen extends ConsumerWidget {
             tile(
               icon: Icons.auto_awesome_rounded,
               color: MilaColors.cyan,
-              title: 'AI Providers',
+              title: l10n.pick(
+                ru: 'AI-провайдеры',
+                en: 'AI Providers',
+                uz: 'AI provayderlar',
+              ),
               value: providerLabel,
               onTap: () => context.push('/settings/providers'),
             ),
             tile(
               icon: Icons.badge_outlined,
               color: MilaColors.purple,
-              title: 'Assistant name',
+              title: l10n.pick(
+                ru: 'Имя ассистентки',
+                en: 'Assistant name',
+                uz: 'Yordamchi nomi',
+              ),
               value: settings.assistantName,
               onTap: editAssistantName,
             ),
             tile(
               icon: Icons.record_voice_over_outlined,
               color: MilaColors.violet,
-              title: 'Voice & Speech',
-              value: voiceGenderLabel(
-                assistantVoiceGenderFromName(settings.voiceName),
+              title: l10n.pick(
+                ru: 'Голос и речь',
+                en: 'Voice & Speech',
+                uz: 'Ovoz va nutq',
+              ),
+              value: l10n.voiceGender(
+                assistantVoiceGenderFromName(settings.voiceName).name,
               ),
               onTap: () => context.push('/settings/providers'),
             ),
             tile(
               icon: Icons.psychology_alt_outlined,
               color: MilaColors.purple,
-              title: 'Assistant Personality',
+              title: l10n.pick(
+                ru: 'Характер ассистентки',
+                en: 'Assistant Personality',
+                uz: 'Yordamchi xarakteri',
+              ),
               onTap: editPersonality,
             ),
             tile(
               icon: Icons.bookmark_outline_rounded,
               color: MilaColors.pink,
-              title: 'Memory & Privacy',
+              title: l10n.pick(
+                ru: 'Память и приватность',
+                en: 'Memory & Privacy',
+                uz: 'Xotira va maxfiylik',
+              ),
               onTap: () => context.push('/memory'),
             ),
             tile(
               icon: Icons.auto_fix_high_rounded,
               color: MilaColors.violet,
-              title: 'Auto Memory',
+              title: l10n.pick(
+                ru: 'Автопамять',
+                en: 'Auto Memory',
+                uz: 'Avto xotira',
+              ),
               trailing: Switch(
                 value: settings.autoMemory,
                 onChanged: (v) => ref
@@ -381,17 +477,29 @@ class SettingsScreen extends ConsumerWidget {
             tile(
               icon: Icons.extension_outlined,
               color: MilaColors.cyan,
-              title: 'Integrations',
+              title: l10n.pick(
+                ru: 'Интеграции',
+                en: 'Integrations',
+                uz: 'Integratsiyalar',
+              ),
               onTap: () => context.push('/integrations'),
             ),
             tile(
               icon: Icons.notifications_none_rounded,
               color: MilaColors.violet,
-              title: 'Notifications',
+              title: l10n.pick(
+                ru: 'Уведомления',
+                en: 'Notifications',
+                uz: 'Bildirishnomalar',
+              ),
               onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
+                SnackBar(
                   content: Text(
-                    'Manage notification access in system settings.',
+                    l10n.pick(
+                      ru: 'Доступ к уведомлениям управляется в настройках системы.',
+                      en: 'Manage notification access in system settings.',
+                      uz: 'Bildirishnoma ruxsatlari tizim sozlamalarida boshqariladi.',
+                    ),
                   ),
                 ),
               ),
@@ -399,33 +507,44 @@ class SettingsScreen extends ConsumerWidget {
             tile(
               icon: Icons.language_rounded,
               color: MilaColors.cyan,
-              title: 'Language',
+              title: l10n.pick(ru: 'Язык', en: 'Language', uz: 'Til'),
               value: settings.language,
               onTap: pickLanguage,
             ),
             tile(
               icon: Icons.info_outline_rounded,
               color: MilaColors.textSecondary,
-              title: 'About MILA',
+              title: l10n.pick(
+                ru: 'О MILA',
+                en: 'About MILA',
+                uz: 'MILA haqida',
+              ),
               onTap: () => showAboutDialog(
                 context: context,
                 applicationName: 'MILA',
                 applicationVersion:
                     '${UpdateService.currentVersion}+${UpdateService.currentVersionCode}',
-                applicationLegalese:
-                    'AI Voice Assistant.\nVoice: Gemini Live API · Text: Gemini.',
+                applicationLegalese: l10n.pick(
+                  ru: 'AI-голосовой помощник.\nГолос: Gemini Live API · Текст: Gemini.',
+                  en: 'AI Voice Assistant.\nVoice: Gemini Live API · Text: Gemini.',
+                  uz: 'AI ovozli yordamchi.\nOvoz: Gemini Live API · Matn: Gemini.',
+                ),
               ),
             ),
             tile(
               icon: Icons.system_update_alt_rounded,
               color: MilaColors.cyan,
-              title: 'Check for Updates',
+              title: l10n.pick(
+                ru: 'Проверить обновления',
+                en: 'Check for Updates',
+                uz: 'Yangilanishlarni tekshirish',
+              ),
               value: UpdateService.currentVersion,
               onTap: checkUpdates,
             ),
             const SizedBox(height: 10),
             GhostButton(
-              label: 'Log Out',
+              label: l10n.pick(ru: 'Выйти', en: 'Log Out', uz: 'Chiqish'),
               icon: Icons.logout_rounded,
               danger: true,
               onPressed: () {

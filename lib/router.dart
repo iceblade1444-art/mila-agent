@@ -26,10 +26,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/onboarding', builder: (_, _) => const OnboardingScreen()),
       GoRoute(path: '/signin', builder: (_, _) => const SignInScreen()),
       GoRoute(
-          path: '/assistant-setup',
-          builder: (_, _) => const AssistantSetupScreen()),
+        path: '/assistant-setup',
+        builder: (_, _) => const AssistantSetupScreen(),
+      ),
       GoRoute(
-          path: '/permissions', builder: (_, _) => const PermissionsScreen()),
+        path: '/permissions',
+        builder: (_, _) => const PermissionsScreen(),
+      ),
       GoRoute(
         path: '/voice',
         pageBuilder: (_, state) => CustomTransitionPage(
@@ -40,7 +43,8 @@ final routerProvider = Provider<GoRouter>((ref) {
             opacity: animation,
             child: ScaleTransition(
               scale: Tween(begin: 0.96, end: 1.0).animate(
-                  CurvedAnimation(parent: animation, curve: Curves.easeOut)),
+                CurvedAnimation(parent: animation, curve: Curves.easeOut),
+              ),
               child: child,
             ),
           ),
@@ -48,29 +52,40 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(path: '/memory', builder: (_, _) => const MemoryScreen()),
       GoRoute(
-          path: '/integrations',
-          builder: (_, _) => const IntegrationsScreen()),
+        path: '/integrations',
+        builder: (_, _) => const IntegrationsScreen(),
+      ),
       GoRoute(path: '/settings', builder: (_, _) => const SettingsScreen()),
       GoRoute(
-          path: '/settings/providers',
-          builder: (_, _) => const ProvidersScreen()),
+        path: '/settings/providers',
+        builder: (_, _) => const ProvidersScreen(),
+      ),
       StatefulShellRoute.indexedStack(
         builder: (_, _, shell) => ShellScreen(shell: shell),
         branches: [
-          StatefulShellBranch(routes: [
-            GoRoute(path: '/home', builder: (_, _) => const HomeScreen()),
-          ]),
-          StatefulShellBranch(routes: [
-            GoRoute(
+          StatefulShellBranch(
+            routes: [
+              GoRoute(path: '/home', builder: (_, _) => const HomeScreen()),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
                 path: '/command',
-                builder: (_, _) => const CommandCenterScreen()),
-          ]),
-          StatefulShellBranch(routes: [
-            GoRoute(path: '/chat', builder: (_, _) => const ChatScreen()),
-          ]),
-          StatefulShellBranch(routes: [
-            GoRoute(path: '/tasks', builder: (_, _) => const TasksScreen()),
-          ]),
+                builder: (_, _) => const CommandCenterScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(path: '/chat', builder: (_, _) => const ChatScreen()),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(path: '/tasks', builder: (_, _) => const TasksScreen()),
+            ],
+          ),
         ],
       ),
     ],

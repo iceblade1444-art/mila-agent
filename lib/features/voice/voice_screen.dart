@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/i18n/mila_localizations.dart';
 import '../../core/theme/mila_theme.dart';
 import '../../core/widgets/common.dart';
 import '../../core/widgets/voice_orb.dart';
@@ -48,6 +49,11 @@ class _VoiceScreenState extends ConsumerState<VoiceScreen>
   }
 
   Future<void> _toggleCamera() async {
+    final noCameraMessage = context.l10n.pick(
+      ru: 'Камера недоступна.',
+      en: 'No camera is available.',
+      uz: 'Kamera mavjud emas.',
+    );
     if (_camera != null) {
       await _stopCamera();
       if (mounted) setState(() {});
@@ -57,7 +63,9 @@ class _VoiceScreenState extends ConsumerState<VoiceScreen>
     setState(() => _cameraStarting = true);
     try {
       final cameras = await availableCameras();
-      if (cameras.isEmpty) throw StateError('No camera is available.');
+      if (cameras.isEmpty) {
+        throw StateError(noCameraMessage);
+      }
       final preferred = cameras.firstWhere(
         (camera) => camera.lensDirection == CameraLensDirection.front,
         orElse: () => cameras.first,
@@ -81,7 +89,11 @@ class _VoiceScreenState extends ConsumerState<VoiceScreen>
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not start camera: $error')),
+          SnackBar(
+            content: Text(
+              '${context.l10n.pick(ru: 'Не удалось включить камеру', en: 'Could not start camera', uz: 'Kamerani yoqib bo\'lmadi')}: $error',
+            ),
+          ),
         );
       }
     } finally {
@@ -157,22 +169,86 @@ class _VoiceScreenState extends ConsumerState<VoiceScreen>
     final controller = ref.read(voiceControllerProvider.notifier);
     final assistantName = ref.watch(settingsProvider).assistantName;
     final text = Theme.of(context).textTheme;
+    final l10n = context.l10n;
 
     final (title, subtitle) = _justCompleted
-        ? ('Done!', 'Conversation saved')
+        ? (
+            l10n.pick(ru: 'Готово!', en: 'Done!', uz: 'Tayyor!'),
+            l10n.pick(
+              ru: 'Разговор сохранён',
+              en: 'Conversation saved',
+              uz: 'Suhbat saqlandi',
+            ),
+          )
         : switch (state.phase) {
-            VoicePhase.idle => ('How can I help?', 'Tap to speak'),
+            VoicePhase.idle => (
+              l10n.pick(
+                ru: 'Чем помочь?',
+                en: 'How can I help?',
+                uz: 'Qanday yordam beray?',
+              ),
+              l10n.pick(
+                ru: 'Нажмите, чтобы говорить',
+                en: 'Tap to speak',
+                uz: 'Gapirish uchun bosing',
+              ),
+            ),
             VoicePhase.connecting => (
-              'Connecting…',
-              'Setting up the live session',
+              l10n.pick(
+                ru: 'Подключаюсь...',
+                en: 'Connecting...',
+                uz: 'Ulanmoqda...',
+              ),
+              l10n.pick(
+                ru: 'Готовлю live-сессию',
+                en: 'Setting up the live session',
+                uz: 'Live sessiya tayyorlanmoqda',
+              ),
             ),
-            VoicePhase.listening => ('I\'m listening…', 'Speak naturally'),
-            VoicePhase.thinking => ('Thinking…', 'Analyzing your request'),
+            VoicePhase.listening => (
+              l10n.pick(
+                ru: 'Слушаю...',
+                en: 'I\'m listening...',
+                uz: 'Eshityapman...',
+              ),
+              l10n.pick(
+                ru: 'Говорите естественно',
+                en: 'Speak naturally',
+                uz: 'Tabiiy gapiring',
+              ),
+            ),
+            VoicePhase.thinking => (
+              l10n.pick(
+                ru: 'Думаю...',
+                en: 'Thinking...',
+                uz: 'O\'ylayapman...',
+              ),
+              l10n.pick(
+                ru: 'Анализирую запрос',
+                en: 'Analyzing your request',
+                uz: 'So\'rovingiz tahlil qilinmoqda',
+              ),
+            ),
             VoicePhase.speaking => (
-              '$assistantName is speaking',
-              'Tap the orb to interrupt',
+              l10n.pick(
+                ru: '$assistantName говорит',
+                en: '$assistantName is speaking',
+                uz: '$assistantName gapiryapti',
+              ),
+              l10n.pick(
+                ru: 'Нажмите на сферу, чтобы перебить',
+                en: 'Tap the orb to interrupt',
+                uz: 'To\'xtatish uchun sferani bosing',
+              ),
             ),
-            VoicePhase.error => ('Something went wrong', ''),
+            VoicePhase.error => (
+              l10n.pick(
+                ru: 'Что-то пошло не так',
+                en: 'Something went wrong',
+                uz: 'Nimadir xato ketdi',
+              ),
+              '',
+            ),
           };
 
     final mood = _justCompleted
@@ -198,7 +274,17 @@ class _VoiceScreenState extends ConsumerState<VoiceScreen>
                   ),
                   const Spacer(),
                   IconButton(
-                    tooltip: _camera == null ? 'Share camera' : 'Stop camera',
+                    tooltip: _camera == null
+                        ? l10n.pick(
+                            ru: 'Включить камеру',
+                            en: 'Share camera',
+                            uz: 'Kamerani ulash',
+                          )
+                        : l10n.pick(
+                            ru: 'Остановить камеру',
+                            en: 'Stop camera',
+                            uz: 'Kamerani o\'chirish',
+                          ),
                     icon: _cameraStarting
                         ? const SizedBox(
                             width: 20,
@@ -317,15 +403,31 @@ class _VoiceScreenState extends ConsumerState<VoiceScreen>
                 child: state.active || state.phase == VoicePhase.connecting
                     ? GhostButton(
                         label: state.phase == VoicePhase.connecting
-                            ? 'Cancel'
-                            : 'End conversation',
+                            ? l10n.pick(
+                                ru: 'Отмена',
+                                en: 'Cancel',
+                                uz: 'Bekor qilish',
+                              )
+                            : l10n.pick(
+                                ru: 'Завершить разговор',
+                                en: 'End conversation',
+                                uz: 'Suhbatni tugatish',
+                              ),
                         icon: Icons.stop_rounded,
                         onPressed: _endConversation,
                       )
                     : GradientButton(
                         label: state.phase == VoicePhase.error
-                            ? 'Try again'
-                            : 'Start talking',
+                            ? l10n.pick(
+                                ru: 'Повторить',
+                                en: 'Try again',
+                                uz: 'Qayta urinish',
+                              )
+                            : l10n.pick(
+                                ru: 'Начать говорить',
+                                en: 'Start talking',
+                                uz: 'Gapirishni boshlash',
+                              ),
                         icon: Icons.mic_rounded,
                         onPressed: () {
                           controller.dismissError();

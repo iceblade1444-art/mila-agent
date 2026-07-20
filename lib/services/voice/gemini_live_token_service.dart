@@ -5,7 +5,10 @@ import 'package:http/http.dart' as http;
 /// Obtains a constrained, short-lived Gemini Live token from the MILA backend.
 /// This keeps the long-lived Gemini provider key off the phone in production.
 class GeminiLiveTokenService {
-  const GeminiLiveTokenService({required this.baseUrl, required this.sessionToken});
+  const GeminiLiveTokenService({
+    required this.baseUrl,
+    required this.sessionToken,
+  });
 
   final String baseUrl;
   final String sessionToken;
@@ -25,10 +28,7 @@ class GeminiLiveTokenService {
     final shouldClose = client == null;
     try {
       final response = await httpClient
-          .post(
-            _endpoint,
-            headers: {'Authorization': 'Bearer $sessionToken'},
-          )
+          .post(_endpoint, headers: {'Authorization': 'Bearer $sessionToken'})
           .timeout(const Duration(seconds: 12));
       final json = _decode(response.body);
       if (response.statusCode == 401) {
@@ -41,7 +41,8 @@ class GeminiLiveTokenService {
       }
       final token = json['token'] as String?;
       if (response.statusCode != 200 || token == null || token.isEmpty) {
-        final message = json['error'] as String? ?? 'Could not start secure voice.';
+        final message =
+            json['error'] as String? ?? 'Could not start secure voice.';
         throw GeminiLiveTokenException(message);
       }
       return token;

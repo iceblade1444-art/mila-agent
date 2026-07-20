@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/i18n/mila_localizations.dart';
 import '../../core/theme/mila_theme.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models.dart';
@@ -71,7 +72,11 @@ class _MemoryScreenState extends ConsumerState<MemoryScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                'Add Memory',
+                context.l10n.pick(
+                  ru: 'Добавить память',
+                  en: 'Add Memory',
+                  uz: 'Xotira qo\'shish',
+                ),
                 style: Theme.of(sheetContext).textTheme.titleMedium,
               ),
               const SizedBox(height: 14),
@@ -80,9 +85,16 @@ class _MemoryScreenState extends ConsumerState<MemoryScreen> {
                 autofocus: true,
                 maxLines: 3,
                 minLines: 1,
-                decoration: const InputDecoration(
-                  hintText: 'e.g. Alex prefers concise summaries',
-                ),
+                decoration:
+                    const InputDecoration(
+                      hintText: 'e.g. Alex prefers concise summaries',
+                    ).copyWith(
+                      hintText: context.l10n.pick(
+                        ru: 'Например: Бахадыр любит короткие резюме',
+                        en: 'e.g. Alex prefers concise summaries',
+                        uz: 'Masalan: Bahodir qisqa xulosalarni yoqtiradi',
+                      ),
+                    ),
               ),
               const SizedBox(height: 14),
               Row(
@@ -91,7 +103,7 @@ class _MemoryScreenState extends ConsumerState<MemoryScreen> {
                     Padding(
                       padding: const EdgeInsets.only(right: 8),
                       child: MilaChip(
-                        label: _categoryLabel(c),
+                        label: _categoryLabel(sheetContext, c),
                         active: category == c,
                         onTap: () => setSheetState(() => category = c),
                       ),
@@ -100,7 +112,11 @@ class _MemoryScreenState extends ConsumerState<MemoryScreen> {
               ),
               const SizedBox(height: 16),
               GradientButton(
-                label: 'Save',
+                label: context.l10n.pick(
+                  ru: 'Сохранить',
+                  en: 'Save',
+                  uz: 'Saqlash',
+                ),
                 onPressed: () => Navigator.pop(sheetContext, true),
               ),
             ],
@@ -120,7 +136,11 @@ class _MemoryScreenState extends ConsumerState<MemoryScreen> {
         } on AgenticOsException catch (error) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Saved locally. ${error.message}')),
+              SnackBar(
+                content: Text(
+                  '${context.l10n.pick(ru: 'Сохранено локально.', en: 'Saved locally.', uz: 'Mahalliy saqlandi.')} ${error.message}',
+                ),
+              ),
             );
           }
         }
@@ -145,15 +165,28 @@ class _MemoryScreenState extends ConsumerState<MemoryScreen> {
     ref.read(memoriesProvider.notifier).remove(item.id);
   }
 
-  static String _categoryLabel(MemoryCategory c) => switch (c) {
-    MemoryCategory.people => 'People',
-    MemoryCategory.preferences => 'Preferences',
-    MemoryCategory.facts => 'Facts',
+  String _categoryLabel(BuildContext context, MemoryCategory c) => switch (c) {
+    MemoryCategory.people => context.l10n.pick(
+      ru: 'Люди',
+      en: 'People',
+      uz: 'Odamlar',
+    ),
+    MemoryCategory.preferences => context.l10n.pick(
+      ru: 'Предпочтения',
+      en: 'Preferences',
+      uz: 'Afzalliklar',
+    ),
+    MemoryCategory.facts => context.l10n.pick(
+      ru: 'Факты',
+      en: 'Facts',
+      uz: 'Faktlar',
+    ),
   };
 
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
+    final l10n = context.l10n;
     final all = ref.watch(memoriesProvider);
     final items = all.where((m) {
       if (_filter != null && m.category != _filter) return false;
@@ -166,10 +199,26 @@ class _MemoryScreenState extends ConsumerState<MemoryScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Memory Vault'),
+        title: Text(
+          l10n.pick(
+            ru: 'Библиотека памяти',
+            en: 'Memory Vault',
+            uz: 'Xotira ombori',
+          ),
+        ),
         actions: [
           IconButton(
-            tooltip: _cloudConnected ? 'Synced with Obsidian' : 'Sync memory',
+            tooltip: _cloudConnected
+                ? l10n.pick(
+                    ru: 'Синхронизировано с Obsidian',
+                    en: 'Synced with Obsidian',
+                    uz: 'Obsidian bilan sinxron',
+                  )
+                : l10n.pick(
+                    ru: 'Синхронизировать память',
+                    en: 'Sync memory',
+                    uz: 'Xotirani sinxronlash',
+                  ),
             onPressed: _syncing ? null : _sync,
             icon: _syncing
                 ? const SizedBox(
@@ -198,7 +247,11 @@ class _MemoryScreenState extends ConsumerState<MemoryScreen> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
                 child: Text(
-                  'MILA remembers what matters',
+                  l10n.pick(
+                    ru: 'MILA помнит важное',
+                    en: 'MILA remembers what matters',
+                    uz: 'MILA muhim narsalarni eslaydi',
+                  ),
                   style: text.bodySmall,
                   textAlign: TextAlign.center,
                 ),
@@ -207,13 +260,19 @@ class _MemoryScreenState extends ConsumerState<MemoryScreen> {
                 padding: const EdgeInsets.all(20),
                 child: TextField(
                   onChanged: (v) => setState(() => _query = v),
-                  decoration: const InputDecoration(
-                    hintText: 'Search memories',
-                    prefixIcon: Icon(
-                      Icons.search_rounded,
-                      color: MilaColors.textTertiary,
-                    ),
-                  ),
+                  decoration:
+                      const InputDecoration(
+                        prefixIcon: Icon(
+                          Icons.search_rounded,
+                          color: MilaColors.textTertiary,
+                        ),
+                      ).copyWith(
+                        hintText: l10n.pick(
+                          ru: 'Поиск по памяти',
+                          en: 'Search memories',
+                          uz: 'Xotiradan qidirish',
+                        ),
+                      ),
                 ),
               ),
               SingleChildScrollView(
@@ -222,7 +281,7 @@ class _MemoryScreenState extends ConsumerState<MemoryScreen> {
                 child: Row(
                   children: [
                     MilaChip(
-                      label: 'All',
+                      label: l10n.pick(ru: 'Все', en: 'All', uz: 'Hammasi'),
                       active: _filter == null,
                       onTap: () => setState(() => _filter = null),
                     ),
@@ -230,7 +289,7 @@ class _MemoryScreenState extends ConsumerState<MemoryScreen> {
                       Padding(
                         padding: const EdgeInsets.only(left: 8),
                         child: MilaChip(
-                          label: _categoryLabel(c),
+                          label: _categoryLabel(context, c),
                           active: _filter == c,
                           onTap: () => setState(() => _filter = c),
                         ),
@@ -244,8 +303,16 @@ class _MemoryScreenState extends ConsumerState<MemoryScreen> {
                     ? Center(
                         child: Text(
                           all.isEmpty
-                              ? 'Nothing saved yet.\nMILA will remember verified facts here.'
-                              : 'No memories match your search.',
+                              ? l10n.pick(
+                                  ru: 'Пока ничего не сохранено.\nMILA будет хранить здесь проверенные факты.',
+                                  en: 'Nothing saved yet.\nMILA will remember verified facts here.',
+                                  uz: 'Hali hech narsa saqlanmagan.\nMILA tekshirilgan faktlarni shu yerda saqlaydi.',
+                                )
+                              : l10n.pick(
+                                  ru: 'По запросу ничего не найдено.',
+                                  en: 'No memories match your search.',
+                                  uz: 'Qidiruvga mos xotira topilmadi.',
+                                ),
                           textAlign: TextAlign.center,
                           style: text.bodySmall,
                         ),
@@ -270,7 +337,7 @@ class _MemoryScreenState extends ConsumerState<MemoryScreen> {
                                         Text(m.text, style: text.bodyMedium),
                                         const SizedBox(height: 6),
                                         Text(
-                                          '${_categoryLabel(m.category)} · ${DateFormat('MMM d, yyyy').format(m.createdAt)}',
+                                          '${_categoryLabel(context, m.category)} · ${DateFormat('MMM d, yyyy', Localizations.localeOf(context).languageCode).format(m.createdAt)}',
                                           style: text.labelSmall?.copyWith(
                                             fontSize: 11,
                                           ),
@@ -296,7 +363,11 @@ class _MemoryScreenState extends ConsumerState<MemoryScreen> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
                 child: GradientButton(
-                  label: 'Add Memory',
+                  label: l10n.pick(
+                    ru: 'Добавить память',
+                    en: 'Add Memory',
+                    uz: 'Xotira qo\'shish',
+                  ),
                   icon: Icons.add_rounded,
                   onPressed: _add,
                 ),

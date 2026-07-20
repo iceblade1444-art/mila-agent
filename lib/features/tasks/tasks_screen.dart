@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/i18n/mila_localizations.dart';
 import '../../core/theme/mila_theme.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models.dart';
@@ -37,7 +38,17 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              isAutomation ? 'Create Automation' : 'Create Task',
+              isAutomation
+                  ? context.l10n.pick(
+                      ru: 'Создать автоматизацию',
+                      en: 'Create Automation',
+                      uz: 'Avtomatlashtirish yaratish',
+                    )
+                  : context.l10n.pick(
+                      ru: 'Создать задачу',
+                      en: 'Create Task',
+                      uz: 'Vazifa yaratish',
+                    ),
               style: Theme.of(sheetContext).textTheme.titleMedium,
             ),
             const SizedBox(height: 14),
@@ -46,8 +57,16 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
               autofocus: true,
               decoration: InputDecoration(
                 hintText: isAutomation
-                    ? 'e.g. Daily Email Summary'
-                    : 'e.g. Review Q2 report',
+                    ? context.l10n.pick(
+                        ru: 'Например: ежедневное резюме писем',
+                        en: 'e.g. Daily Email Summary',
+                        uz: 'Masalan: kundalik email xulosasi',
+                      )
+                    : context.l10n.pick(
+                        ru: 'Например: проверить отчёт за квартал',
+                        en: 'e.g. Review Q2 report',
+                        uz: 'Masalan: chorak hisobotini ko\'rish',
+                      ),
               ),
             ),
             const SizedBox(height: 12),
@@ -55,13 +74,25 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
               controller: subtitle,
               decoration: InputDecoration(
                 hintText: isAutomation
-                    ? 'Schedule, e.g. Every day at 8:00 AM'
-                    : 'Details (optional)',
+                    ? context.l10n.pick(
+                        ru: 'Расписание, например: каждый день в 8:00',
+                        en: 'Schedule, e.g. Every day at 8:00 AM',
+                        uz: 'Jadval, masalan: har kuni 8:00 da',
+                      )
+                    : context.l10n.pick(
+                        ru: 'Детали (необязательно)',
+                        en: 'Details (optional)',
+                        uz: 'Tafsilotlar (ixtiyoriy)',
+                      ),
               ),
             ),
             const SizedBox(height: 16),
             GradientButton(
-              label: 'Create',
+              label: context.l10n.pick(
+                ru: 'Создать',
+                en: 'Create',
+                uz: 'Yaratish',
+              ),
               onPressed: () => Navigator.pop(sheetContext, true),
             ),
           ],
@@ -76,7 +107,15 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
               .create(title.text.trim(), subtitle.text.trim());
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Sent to Hermes for planning.')),
+              SnackBar(
+                content: Text(
+                  context.l10n.pick(
+                    ru: 'Отправлено Hermes для планирования.',
+                    en: 'Sent to Hermes for planning.',
+                    uz: 'Rejalash uchun Hermesga yuborildi.',
+                  ),
+                ),
+              ),
             );
           }
         } catch (error) {
@@ -103,6 +142,7 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
+    final l10n = context.l10n;
     final all = ref.watch(tasksProvider);
     final agentic = ref.watch(agenticTasksProvider);
     final items = _automations
@@ -120,7 +160,14 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
             children: [
               const SizedBox(height: 18),
               Center(
-                child: Text('Tasks & Automations', style: text.headlineSmall),
+                child: Text(
+                  l10n.pick(
+                    ru: 'Задачи и автоматизации',
+                    en: 'Tasks & Automations',
+                    uz: 'Vazifalar va avtomatlashtirish',
+                  ),
+                  style: text.headlineSmall,
+                ),
               ),
               if (!_automations) ...[
                 const SizedBox(height: 8),
@@ -168,8 +215,16 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                           const SizedBox(width: 6),
                           Text(
                             agentic.connected
-                                ? 'Hermes Kanban synced'
-                                : 'Local tasks · connect Agentic OS',
+                                ? l10n.pick(
+                                    ru: 'Hermes Kanban синхронизирован',
+                                    en: 'Hermes Kanban synced',
+                                    uz: 'Hermes Kanban sinxronlashdi',
+                                  )
+                                : l10n.pick(
+                                    ru: 'Локальные задачи · подключите Agentic OS',
+                                    en: 'Local tasks · connect Agentic OS',
+                                    uz: 'Mahalliy vazifalar · Agentic OS ulang',
+                                  ),
                             style: text.labelSmall?.copyWith(
                               color: agentic.connected
                                   ? MilaColors.success
@@ -194,9 +249,9 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                   ),
                   child: Row(
                     children: [
-                      for (final (auto, label) in const [
-                        (false, 'Tasks'),
-                        (true, 'Automations'),
+                      for (final (auto, _) in const [
+                        (false, 'tasks'),
+                        (true, 'automations'),
                       ])
                         Expanded(
                           child: GestureDetector(
@@ -212,7 +267,17 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                               ),
                               child: Center(
                                 child: Text(
-                                  label,
+                                  auto
+                                      ? l10n.pick(
+                                          ru: 'Автоматизации',
+                                          en: 'Automations',
+                                          uz: 'Avtomatika',
+                                        )
+                                      : l10n.pick(
+                                          ru: 'Задачи',
+                                          en: 'Tasks',
+                                          uz: 'Vazifalar',
+                                        ),
                                   style: text.labelLarge?.copyWith(
                                     color: _automations == auto
                                         ? Colors.white
@@ -244,10 +309,22 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                             const SizedBox(height: 12),
                             Text(
                               _automations
-                                  ? 'No automations yet.\nAsk MILA to automate something.'
+                                  ? l10n.pick(
+                                      ru: 'Автоматизаций пока нет.\nПопросите MILA что-нибудь автоматизировать.',
+                                      en: 'No automations yet.\nAsk MILA to automate something.',
+                                      uz: 'Hali avtomatika yo\'q.\nMILA’dan nimanidir avtomatlashtirishni so\'rang.',
+                                    )
                                   : agentic.connected
-                                  ? 'No Hermes tasks yet.\nAsk MILA or create a task here.'
-                                  : 'No tasks yet.\nConnect Agentic OS or add one locally.',
+                                  ? l10n.pick(
+                                      ru: 'Задач Hermes пока нет.\nПопросите MILA или создайте задачу здесь.',
+                                      en: 'No Hermes tasks yet.\nAsk MILA or create a task here.',
+                                      uz: 'Hermes vazifalari hali yo\'q.\nMILA’dan so\'rang yoki shu yerda yarating.',
+                                    )
+                                  : l10n.pick(
+                                      ru: 'Задач пока нет.\nПодключите Agentic OS или добавьте локально.',
+                                      en: 'No tasks yet.\nConnect Agentic OS or add one locally.',
+                                      uz: 'Hali vazifalar yo\'q.\nAgentic OS ulang yoki mahalliy qo\'shing.',
+                                    ),
                               textAlign: TextAlign.center,
                               style: text.bodySmall,
                             ),
@@ -417,7 +494,17 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
           backgroundColor: MilaColors.violet,
           icon: const Icon(Icons.add_rounded, color: Colors.white),
           label: Text(
-            _automations ? 'Create Automation' : 'Create Task',
+            _automations
+                ? l10n.pick(
+                    ru: 'Создать автоматизацию',
+                    en: 'Create Automation',
+                    uz: 'Avtomatika yaratish',
+                  )
+                : l10n.pick(
+                    ru: 'Создать задачу',
+                    en: 'Create Task',
+                    uz: 'Vazifa yaratish',
+                  ),
             style: const TextStyle(color: Colors.white),
           ),
         ),

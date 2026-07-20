@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 import 'package:mime/mime.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../core/i18n/mila_localizations.dart';
 import '../../core/theme/mila_theme.dart';
 import '../../core/widgets/common.dart';
 import '../../core/widgets/voice_orb.dart';
@@ -101,8 +102,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (existingSize + await file.length() > 15 * 1024 * 1024) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Attachments must be smaller than 15 MB.'),
+          SnackBar(
+            content: Text(
+              context.l10n.pick(
+                ru: 'Вложения должны быть меньше 15 МБ.',
+                en: 'Attachments must be smaller than 15 MB.',
+                uz: 'Ilovalar 15 MB dan kichik bo\'lishi kerak.',
+              ),
+            ),
           ),
         );
       }
@@ -144,17 +151,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             children: [
               _AttachmentAction(
                 icon: Icons.camera_alt_outlined,
-                label: 'Camera',
+                label: context.l10n.pick(
+                  ru: 'Камера',
+                  en: 'Camera',
+                  uz: 'Kamera',
+                ),
                 onTap: () => Navigator.pop(sheetContext, 'camera'),
               ),
               _AttachmentAction(
                 icon: Icons.photo_library_outlined,
-                label: 'Photo',
+                label: context.l10n.pick(ru: 'Фото', en: 'Photo', uz: 'Rasm'),
                 onTap: () => Navigator.pop(sheetContext, 'photo'),
               ),
               _AttachmentAction(
                 icon: Icons.attach_file_rounded,
-                label: 'File',
+                label: context.l10n.pick(ru: 'Файл', en: 'File', uz: 'Fayl'),
                 onTap: () => Navigator.pop(sheetContext, 'file'),
               ),
             ],
@@ -172,6 +183,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final messages = ref.watch(chatProvider);
     final busy = ref.watch(chatBusyProvider);
     final assistantName = ref.watch(settingsProvider).assistantName;
+    final l10n = context.l10n;
 
     // Keep pinned to the latest message while streaming.
     ref.listen(chatProvider, (_, _) {
@@ -191,34 +203,63 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               Row(
                 children: [
                   const SizedBox(width: 12),
-                  Text('Today', style: Theme.of(context).textTheme.titleMedium),
+                  Text(
+                    l10n.pick(ru: 'Сегодня', en: 'Today', uz: 'Bugun'),
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
                   const Spacer(),
                   IconButton(
                     icon: const Icon(Icons.delete_outline_rounded, size: 22),
-                    tooltip: 'Clear conversation',
+                    tooltip: l10n.pick(
+                      ru: 'Очистить диалог',
+                      en: 'Clear conversation',
+                      uz: 'Suhbatni tozalash',
+                    ),
                     onPressed: messages.isEmpty
                         ? null
                         : () => showDialog(
                             context: context,
                             builder: (dialogContext) => AlertDialog(
                               backgroundColor: const Color(0xFF141926),
-                              title: const Text('Clear conversation?'),
-                              content: const Text(
-                                'This deletes the whole transcript on this device.',
+                              title: Text(
+                                l10n.pick(
+                                  ru: 'Очистить диалог?',
+                                  en: 'Clear conversation?',
+                                  uz: 'Suhbatni tozalaysizmi?',
+                                ),
+                              ),
+                              content: Text(
+                                l10n.pick(
+                                  ru: 'Вся переписка на этом устройстве будет удалена.',
+                                  en: 'This deletes the whole transcript on this device.',
+                                  uz: 'Bu qurilmadagi barcha yozishma o\'chiriladi.',
+                                ),
                               ),
                               actions: [
                                 TextButton(
                                   onPressed: () => Navigator.pop(dialogContext),
-                                  child: const Text('Cancel'),
+                                  child: Text(
+                                    l10n.pick(
+                                      ru: 'Отмена',
+                                      en: 'Cancel',
+                                      uz: 'Bekor qilish',
+                                    ),
+                                  ),
                                 ),
                                 TextButton(
                                   onPressed: () {
                                     ref.read(chatProvider.notifier).clear();
                                     Navigator.pop(dialogContext);
                                   },
-                                  child: const Text(
-                                    'Clear',
-                                    style: TextStyle(color: MilaColors.danger),
+                                  child: Text(
+                                    l10n.pick(
+                                      ru: 'Очистить',
+                                      en: 'Clear',
+                                      uz: 'Tozalash',
+                                    ),
+                                    style: const TextStyle(
+                                      color: MilaColors.danger,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -265,14 +306,26 @@ class _EmptyChat extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
+    final l10n = context.l10n;
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text('No conversations yet', style: text.headlineSmall),
+          Text(
+            l10n.pick(
+              ru: 'Диалогов пока нет',
+              en: 'No conversations yet',
+              uz: 'Hali suhbatlar yo\'q',
+            ),
+            style: text.headlineSmall,
+          ),
           const SizedBox(height: 8),
           Text(
-            'Tap the orb and say hello.\nI\'m here whenever you need me.',
+            l10n.pick(
+              ru: 'Нажмите на сферу и скажите привет.\nЯ рядом, когда понадоблюсь.',
+              en: 'Tap the orb and say hello.\nI\'m here whenever you need me.',
+              uz: 'Sferani bosing va salom ayting.\nKerak bo\'lsam, shu yerdaman.',
+            ),
             textAlign: TextAlign.center,
             style: text.bodySmall,
           ),
@@ -389,28 +442,37 @@ class _ActionCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final text = Theme.of(context).textTheme;
+    final l10n = context.l10n;
     final (icon, color, cta) = switch (action.type) {
       ActionType.draftMessage => (
         Icons.mail_outline_rounded,
         MilaColors.cyan,
-        'Review',
+        l10n.pick(ru: 'Проверить', en: 'Review', uz: 'Ko\'rish'),
       ),
       ActionType.createTask => (
         Icons.check_circle_outline_rounded,
         MilaColors.purple,
-        'Add',
+        l10n.pick(ru: 'Добавить', en: 'Add', uz: 'Qo\'shish'),
       ),
-      ActionType.reminder => (Icons.alarm_rounded, MilaColors.violet, 'Add'),
-      ActionType.focusTime => (Icons.timelapse_rounded, MilaColors.pink, 'Add'),
+      ActionType.reminder => (
+        Icons.alarm_rounded,
+        MilaColors.violet,
+        l10n.pick(ru: 'Добавить', en: 'Add', uz: 'Qo\'shish'),
+      ),
+      ActionType.focusTime => (
+        Icons.timelapse_rounded,
+        MilaColors.pink,
+        l10n.pick(ru: 'Добавить', en: 'Add', uz: 'Qo\'shish'),
+      ),
       ActionType.saveMemory => (
         Icons.bookmark_add_outlined,
         MilaColors.violet,
-        'Save',
+        l10n.pick(ru: 'Сохранить', en: 'Save', uz: 'Saqlash'),
       ),
       ActionType.unknown => (
         Icons.bolt_rounded,
         MilaColors.textSecondary,
-        'OK',
+        l10n.pick(ru: 'ОК', en: 'OK', uz: 'OK'),
       ),
     };
     final approved = action.status == ActionStatus.approved;
@@ -543,7 +605,11 @@ class _InputBar extends StatelessWidget {
           Row(
             children: [
               IconButton(
-                tooltip: 'Add photo or file',
+                tooltip: context.l10n.pick(
+                  ru: 'Добавить фото или файл',
+                  en: 'Add photo or file',
+                  uz: 'Rasm yoki fayl qo\'shish',
+                ),
                 onPressed: busy ? null : onAttach,
                 icon: const Icon(Icons.add_circle_outline_rounded),
               ),
@@ -553,7 +619,11 @@ class _InputBar extends StatelessWidget {
                   textInputAction: TextInputAction.send,
                   onSubmitted: (_) => onSend(),
                   decoration: InputDecoration(
-                    hintText: 'Ask $assistantName…',
+                    hintText: context.l10n.pick(
+                      ru: 'Спросить $assistantName...',
+                      en: 'Ask $assistantName...',
+                      uz: '$assistantName’dan so\'rang...',
+                    ),
                     suffixIcon: IconButton(
                       icon: const Icon(
                         Icons.mic_none_rounded,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/app_config.dart';
+import '../../core/i18n/mila_localizations.dart';
 import '../../core/theme/mila_theme.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models.dart';
@@ -64,6 +65,7 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
   }
 
   Future<void> _connectMilaAccount() async {
+    final l10n = context.l10n;
     try {
       final session = await const MilaAccountService().exchangeCode(
         baseUrl: _serverUrl.text,
@@ -76,7 +78,13 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
       final storedToken =
           await secure.read(SecureStore.openAiAccountToken) ?? '';
       if (storedToken != session.token) {
-        throw StateError('Could not save the MILA session on this device.');
+        throw StateError(
+          l10n.pick(
+            ru: 'Не удалось сохранить сессию MILA на этом устройстве.',
+            en: 'Could not save the MILA session on this device.',
+            uz: 'Bu qurilmada MILA sessiyasini saqlab bo\'lmadi.',
+          ),
+        );
       }
       String voiceCheck = '';
       try {
@@ -87,7 +95,8 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
           sessionToken: storedToken,
         ).createToken();
       } on GeminiLiveTokenException catch (error) {
-        voiceCheck = ' Connected, but voice needs attention: ${error.message}';
+        voiceCheck =
+            ' ${l10n.pick(ru: 'Подключено, но голос требует внимания', en: 'Connected, but voice needs attention', uz: 'Ulandi, lekin ovoz sozlamasi eʼtibor talab qiladi')}: ${error.message}';
       }
       if (!mounted) return;
       setState(() {
@@ -97,7 +106,11 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
       await ref.read(agenticTasksProvider.notifier).refresh();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Connected as ${session.label}.$voiceCheck')),
+        SnackBar(
+          content: Text(
+            '${l10n.pick(ru: 'Подключено как', en: 'Connected as', uz: 'Ulandi')}: ${session.label}.$voiceCheck',
+          ),
+        ),
       );
     } catch (error) {
       if (!mounted) return;
@@ -148,9 +161,13 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
           ),
         );
     if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Saved.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            context.l10n.pick(ru: 'Сохранено.', en: 'Saved.', uz: 'Saqlandi.'),
+          ),
+        ),
+      );
       Navigator.of(context).maybePop();
     }
   }
@@ -169,6 +186,7 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final settings = ref.watch(settingsProvider);
+    final l10n = context.l10n;
 
     Widget geminiKeyField() {
       final hasOverride = _geminiKey.text.trim().isNotEmpty;
@@ -176,7 +194,14 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Gemini access', style: text.labelMedium),
+          Text(
+            l10n.pick(
+              ru: 'Доступ Gemini',
+              en: 'Gemini access',
+              uz: 'Gemini ruxsati',
+            ),
+            style: text.labelMedium,
+          ),
           const SizedBox(height: 10),
           GlassCard(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -200,10 +225,22 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
                 Expanded(
                   child: Text(
                     secureVoiceConnected
-                        ? 'Secure Gemini access via MILA server'
+                        ? l10n.pick(
+                            ru: 'Безопасный доступ Gemini через сервер MILA',
+                            en: 'Secure Gemini access via MILA server',
+                            uz: 'MILA serveri orqali xavfsiz Gemini ruxsati',
+                          )
                         : AppConfig.hasBundledGeminiKey
-                        ? 'Integrated Gemini key is active'
-                        : 'Connect MILA to enable secure Gemini access',
+                        ? l10n.pick(
+                            ru: 'Встроенный ключ Gemini активен',
+                            en: 'Integrated Gemini key is active',
+                            uz: 'Ichki Gemini kaliti faol',
+                          )
+                        : l10n.pick(
+                            ru: 'Подключите MILA для безопасного доступа Gemini',
+                            en: 'Connect MILA to enable secure Gemini access',
+                            uz: 'Xavfsiz Gemini uchun MILA’ni ulang',
+                          ),
                     style: text.bodyMedium,
                   ),
                 ),
@@ -213,8 +250,16 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
           const SizedBox(height: 12),
           Text(
             hasOverride
-                ? 'Direct Gemini key override'
-                : 'Direct Gemini key (optional)',
+                ? l10n.pick(
+                    ru: 'Прямой ключ Gemini переопределён',
+                    en: 'Direct Gemini key override',
+                    uz: 'To\'g\'ridan-to\'g\'ri Gemini kaliti ishlatiladi',
+                  )
+                : l10n.pick(
+                    ru: 'Прямой ключ Gemini (необязательно)',
+                    en: 'Direct Gemini key (optional)',
+                    uz: 'To\'g\'ridan-to\'g\'ri Gemini kaliti (ixtiyoriy)',
+                  ),
             style: text.labelSmall,
           ),
           const SizedBox(height: 6),
@@ -224,7 +269,11 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
             autocorrect: false,
             enableSuggestions: false,
             decoration: InputDecoration(
-              hintText: 'Only for a separate developer key',
+              hintText: l10n.pick(
+                ru: 'Только для отдельного developer-ключа',
+                en: 'Only for a separate developer key',
+                uz: 'Faqat alohida developer kaliti uchun',
+              ),
               suffixIcon: IconButton(
                 icon: Icon(
                   _showGeminiKey
@@ -244,7 +293,15 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('AI Providers')),
+      appBar: AppBar(
+        title: Text(
+          l10n.pick(
+            ru: 'AI-провайдеры',
+            en: 'AI Providers',
+            uz: 'AI provayderlar',
+          ),
+        ),
+      ),
       body: MilaBackground(
         glowTop: false,
         child: !_loaded
@@ -254,7 +311,11 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
                 physics: const BouncingScrollPhysics(),
                 children: [
                   Text(
-                    'TEXT INTELLIGENCE',
+                    l10n.pick(
+                      ru: 'ТЕКСТОВЫЙ ИНТЕЛЛЕКТ',
+                      en: 'TEXT INTELLIGENCE',
+                      uz: 'MATN INTELLEKTI',
+                    ),
                     style: text.labelSmall?.copyWith(letterSpacing: 1.5),
                   ),
                   const SizedBox(height: 10),
@@ -273,7 +334,11 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
                               Text('Google Gemini', style: text.titleSmall),
                               const SizedBox(height: 3),
                               Text(
-                                'MILA uses Gemini for text and Gemini Live for voice.',
+                                l10n.pick(
+                                  ru: 'MILA использует Gemini для текста и Gemini Live для голоса.',
+                                  en: 'MILA uses Gemini for text and Gemini Live for voice.',
+                                  uz: 'MILA matn uchun Gemini, ovoz uchun Gemini Live ishlatadi.',
+                                ),
                                 style: text.bodySmall,
                               ),
                             ],
@@ -292,7 +357,7 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
                             ),
                           ),
                           child: Text(
-                            'Active',
+                            l10n.pick(ru: 'Активно', en: 'Active', uz: 'Faol'),
                             style: text.labelMedium?.copyWith(
                               color: MilaColors.success,
                             ),
@@ -303,11 +368,22 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
                   ),
                   const SizedBox(height: 24),
                   Text(
-                    'MILA SERVER',
+                    l10n.pick(
+                      ru: 'СЕРВЕР MILA',
+                      en: 'MILA SERVER',
+                      uz: 'MILA SERVERI',
+                    ),
                     style: text.labelSmall?.copyWith(letterSpacing: 1.5),
                   ),
                   const SizedBox(height: 10),
-                  Text('Server URL', style: text.labelMedium),
+                  Text(
+                    l10n.pick(
+                      ru: 'Адрес сервера',
+                      en: 'Server URL',
+                      uz: 'Server URL',
+                    ),
+                    style: text.labelMedium,
+                  ),
                   const SizedBox(height: 8),
                   TextField(
                     controller: _serverUrl,
@@ -337,8 +413,12 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
                             Expanded(
                               child: Text(
                                 _accountLabel.isNotEmpty
-                                    ? 'Connected as $_accountLabel'
-                                    : 'Connect to Agentic OS',
+                                    ? '${l10n.pick(ru: 'Подключено как', en: 'Connected as', uz: 'Ulandi')}: $_accountLabel'
+                                    : l10n.pick(
+                                        ru: 'Подключить Agentic OS',
+                                        en: 'Connect to Agentic OS',
+                                        uz: 'Agentic OS’ga ulanish',
+                                      ),
                                 style: text.titleSmall,
                               ),
                             ),
@@ -347,8 +427,16 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
                         const SizedBox(height: 8),
                         Text(
                           _accountLabel.isNotEmpty
-                              ? 'Voice uses a short-lived server token; the Gemini key stays on the server.'
-                              : 'Create a one-time code in Agentic OS → Integrations → MILA.',
+                              ? l10n.pick(
+                                  ru: 'Голос использует короткий серверный токен; ключ Gemini остаётся на сервере.',
+                                  en: 'Voice uses a short-lived server token; the Gemini key stays on the server.',
+                                  uz: 'Ovoz qisqa muddatli server tokenidan foydalanadi; Gemini kaliti serverda qoladi.',
+                                )
+                              : l10n.pick(
+                                  ru: 'Создайте одноразовый код в Agentic OS → Integrations → MILA.',
+                                  en: 'Create a one-time code in Agentic OS → Integrations → MILA.',
+                                  uz: 'Agentic OS → Integrations → MILA ichida bir martalik kod yarating.',
+                                ),
                           style: text.bodySmall,
                         ),
                         const SizedBox(height: 12),
@@ -359,8 +447,12 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
                             enableSuggestions: false,
                             textCapitalization: TextCapitalization.characters,
                             maxLength: 8,
-                            decoration: const InputDecoration(
-                              hintText: '8-character code',
+                            decoration: InputDecoration(
+                              hintText: l10n.pick(
+                                ru: 'Код из 8 символов',
+                                en: '8-character code',
+                                uz: '8 belgili kod',
+                              ),
                               counterText: '',
                             ),
                           ),
@@ -368,30 +460,53 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
                           FilledButton.icon(
                             onPressed: _connectMilaAccount,
                             icon: const Icon(Icons.link),
-                            label: const Text('Connect MILA account'),
+                            label: Text(
+                              l10n.pick(
+                                ru: 'Подключить аккаунт MILA',
+                                en: 'Connect MILA account',
+                                uz: 'MILA akkauntini ulash',
+                              ),
+                            ),
                           ),
                         ] else
                           TextButton.icon(
                             onPressed: _disconnectMilaAccount,
                             icon: const Icon(Icons.link_off),
-                            label: const Text('Disconnect account'),
+                            label: Text(
+                              l10n.pick(
+                                ru: 'Отключить аккаунт',
+                                en: 'Disconnect account',
+                                uz: 'Akkauntni uzish',
+                              ),
+                            ),
                           ),
                       ],
                     ),
                   ),
                   const SizedBox(height: 24),
                   Text(
-                    'GEMINI',
+                    l10n.pick(ru: 'GEMINI', en: 'GEMINI', uz: 'GEMINI'),
                     style: text.labelSmall?.copyWith(letterSpacing: 1.5),
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Text chat and real-time voice use MILA integrated Gemini access.',
+                    l10n.pick(
+                      ru: 'Текстовый чат и live-голос используют встроенный доступ Gemini через MILA.',
+                      en: 'Text chat and real-time voice use MILA integrated Gemini access.',
+                      uz: 'Matn chat va live ovoz MILA orqali Gemini ruxsatidan foydalanadi.',
+                    ),
                     style: text.bodySmall,
                   ),
                   const SizedBox(height: 14),
                   geminiKeyField(),
-                  Text('Gemini text model', style: text.labelMedium),
+                  Text(
+                    l10n.pick(
+                      ru: 'Текстовая модель Gemini',
+                      en: 'Gemini text model',
+                      uz: 'Gemini matn modeli',
+                    ),
+                    style: text.labelMedium,
+                  ),
                   const SizedBox(height: 8),
                   TextField(
                     controller: _geminiModel,
@@ -400,7 +515,14 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  Text('Live model', style: text.labelMedium),
+                  Text(
+                    l10n.pick(
+                      ru: 'Live-модель',
+                      en: 'Live model',
+                      uz: 'Live model',
+                    ),
+                    style: text.labelMedium,
+                  ),
                   const SizedBox(height: 8),
                   TextField(
                     controller: _liveModel,
@@ -409,7 +531,10 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  Text('Voice', style: text.labelMedium),
+                  Text(
+                    l10n.pick(ru: 'Голос', en: 'Voice', uz: 'Ovoz'),
+                    style: text.labelMedium,
+                  ),
                   const SizedBox(height: 10),
                   Wrap(
                     spacing: 8,
@@ -417,7 +542,7 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
                     children: [
                       for (final gender in AssistantVoiceGender.values)
                         MilaChip(
-                          label: voiceGenderLabel(gender),
+                          label: l10n.voiceGender(gender.name),
                           active:
                               assistantVoiceGenderFromName(
                                 settings.voiceName,
@@ -439,13 +564,23 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
                   ),
                   const SizedBox(height: 10),
                   GhostButton(
-                    label:
-                        'Listen to ${voiceGenderLabel(assistantVoiceGenderFromName(settings.voiceName)).toLowerCase()} voice',
+                    label: l10n.pick(
+                      ru: 'Послушать голос',
+                      en: 'Listen to voice',
+                      uz: 'Ovozni tinglash',
+                    ),
                     icon: Icons.volume_up_outlined,
                     onPressed: () => _previewVoice(settings.voiceName),
                   ),
                   const SizedBox(height: 30),
-                  GradientButton(label: 'Save', onPressed: _save),
+                  GradientButton(
+                    label: l10n.pick(
+                      ru: 'Сохранить',
+                      en: 'Save',
+                      uz: 'Saqlash',
+                    ),
+                    onPressed: _save,
+                  ),
                 ],
               ),
       ),
