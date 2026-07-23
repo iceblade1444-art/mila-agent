@@ -27,14 +27,14 @@ async function withServer(options, run) {
   }
 }
 
-async function connectMobile(baseUrl, label = 'Mobile tester') {
+async function connectMobile(baseUrl, label = 'Mobile tester', owner = null) {
   const issued = await fetch(`${baseUrl}/admin/connection-code`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'X-Admin-Token': 'admin-secret',
     },
-    body: JSON.stringify({label}),
+    body: JSON.stringify({label, ...(owner ? {owner} : {})}),
   });
   const {code} = await issued.json();
   const exchange = await fetch(`${baseUrl}/v1/auth/device`, {
@@ -91,8 +91,10 @@ test('admin can issue a one-time MILA connection code', async () => {
         body: JSON.stringify({label: 'Mila mobile'}),
       });
       assert.equal(issued.status, 200);
-      const {code} = await issued.json();
+      const issuedJson = await issued.json();
+      const {code} = issuedJson;
       assert.match(code, /^[A-F0-9]{8}$/);
+      assert.equal(issuedJson.owner, null);
 
       const exchange = await fetch(`${baseUrl}/v1/auth/device`, {
         method: 'POST',
@@ -110,6 +112,27 @@ test('admin can issue a one-time MILA connection code', async () => {
         body: JSON.stringify({code}),
       });
       assert.equal(reused.status, 400);
+    },
+  );
+});
+
+test('Agentic OS connection code unifies the mobile session owner', async () => {
+  await withServer(
+    {config: {adminToken: 'admin-secret'}},
+    async (baseUrl) => {
+      const session = await connectMobile(baseUrl, 'iceblade1444@gmail.com', {
+        id: 'creator',
+        email: 'iceblade1444@gmail.com',
+        name: 'Creator',
+        role: 'Creator',
+      });
+      assert.equal(session.label, 'iceblade1444@gmail.com');
+      assert.deepEqual(session.owner, {
+        id: 'creator',
+        email: 'iceblade1444@gmail.com',
+        name: 'Creator',
+        role: 'Creator',
+      });
     },
   );
 });
@@ -198,6 +221,27 @@ test('mobile session synchronizes tasks through the private Agentic OS proxy', a
         ],
       });
     }
+    if (pathname === '/api/knowledge/status') {
+      return Response.json({
+        ready: true,
+        writable: true,
+        notes: 7,
+        folders: 3,
+        mcp: {status: 'active'},
+      });
+    }
+    if (pathname === '/api/operations/status') {
+      return Response.json({
+        available: true,
+        readiness: {status: 'healthy', score: 95},
+      });
+    }
+    if (pathname === '/api/integrations/mila/status') {
+      return Response.json({
+        voiceConfigured: true,
+        liveModel: 'gemini-3.1-flash-live-preview',
+      });
+    }
     if (pathname === '/api/kanban/tasks' && request.method === 'POST') {
       const body = JSON.parse(request.body);
       assert.equal(body.initialStatus, 'triage');
@@ -230,7 +274,12 @@ test('mobile session synchronizes tasks through the private Agentic OS proxy', a
       },
     },
     async (baseUrl) => {
-      const {token} = await connectMobile(baseUrl);
+      const {token} = await connectMobile(baseUrl, 'Creator', {
+        id: 'creator',
+        email: 'creator@example.com',
+        name: 'Creator',
+        role: 'Creator',
+      });
       const headers = {Authorization: `Bearer ${token}`};
 
       const denied = await fetch(`${baseUrl}/v1/tasks`);
@@ -246,6 +295,14 @@ test('mobile session synchronizes tasks through the private Agentic OS proxy', a
       const listJson = await list.json();
       assert.equal(listJson.tasks[0].status, 'running');
       assert.equal(listJson.tasks[0].assignee, 'scout');
+
+      const dashboard = await fetch(`${baseUrl}/v1/dashboard`, {headers});
+      assert.equal(dashboard.status, 200);
+      const dashboardJson = await dashboard.json();
+      assert.equal(dashboardJson.account.owner.email, 'creator@example.com');
+      assert.equal(dashboardJson.tasks.running, 1);
+      assert.equal(dashboardJson.knowledge.notes, 7);
+      assert.equal(dashboardJson.mila.voiceConfigured, true);
 
       const create = await fetch(`${baseUrl}/v1/tasks`, {
         method: 'POST',
@@ -281,6 +338,10 @@ test('mobile session synchronizes tasks through the private Agentic OS proxy', a
   );
 
   assert.ok(calls.some((call) => call.url.endsWith('/api/kanban/dispatch')));
+  assert.ok(calls.some((call) => {
+    if (!call.url.endsWith('/api/knowledge/notes/append')) return false;
+    return JSON.parse(call.request.body).path === 'Agentic OS/People/creator/MILA Mobile Memory.md';
+  }));
 });
 
 test('app update metadata can be saved and checked', async () => {
@@ -426,13 +487,18 @@ test('voice token is protected and never exposes the Gemini API key', async () =
 
       const response = await fetch(`${baseUrl}/v1/voice/token`, {
         method: 'POST',
-        headers: {Authorization: `Bearer ${sessionToken}`},
+        headers: {
+          Authorization: `Bearer ${sessionToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({language: 'uz-UZ'}),
       });
       assert.equal(response.status, 200);
       assert.deepEqual(await response.json(), {
         token: 'ephemeral-token',
         expiresAt: '2026-07-11T12:30:00Z',
         newSessionExpiresAt: '2026-07-11T12:01:00Z',
+        language: 'uz-UZ',
       });
     },
   );

@@ -20,7 +20,10 @@ class GeminiLiveTokenService {
     return Uri.parse('$root/v1/voice/token');
   }
 
-  Future<String> createToken({http.Client? client}) async {
+  Future<String> createToken({
+    String language = 'auto',
+    http.Client? client,
+  }) async {
     if (baseUrl.trim().isEmpty || sessionToken.trim().isEmpty) {
       throw GeminiLiveTokenException('MILA account is not connected.');
     }
@@ -28,7 +31,14 @@ class GeminiLiveTokenService {
     final shouldClose = client == null;
     try {
       final response = await httpClient
-          .post(_endpoint, headers: {'Authorization': 'Bearer $sessionToken'})
+          .post(
+            _endpoint,
+            headers: {
+              'Authorization': 'Bearer $sessionToken',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({'language': language}),
+          )
           .timeout(const Duration(seconds: 12));
       final json = _decode(response.body);
       if (response.statusCode == 401) {

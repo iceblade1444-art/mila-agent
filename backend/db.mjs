@@ -12,6 +12,7 @@ export function createAppDb(dbPath = path.join('data', 'mila.db')) {
     CREATE TABLE IF NOT EXISTS connection_codes (
       code TEXT PRIMARY KEY,
       label TEXT NOT NULL,
+      owner_json TEXT,
       expires_at INTEGER NOT NULL,
       created_at INTEGER NOT NULL
     );
@@ -19,6 +20,7 @@ export function createAppDb(dbPath = path.join('data', 'mila.db')) {
       token_hash TEXT PRIMARY KEY,
       session_id TEXT,
       label TEXT NOT NULL,
+      owner_json TEXT,
       created_at INTEGER NOT NULL,
       revoked_at INTEGER
     );
@@ -44,6 +46,13 @@ export function createAppDb(dbPath = path.join('data', 'mila.db')) {
   } catch (error) {
     if (!String(error.message).includes('duplicate column name')) throw error;
   }
+  for (const table of ['connection_codes', 'sessions']) {
+    try {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN owner_json TEXT`);
+    } catch (error) {
+      if (!String(error.message).includes('duplicate column name')) throw error;
+    }
+  }
   db.exec(`
     UPDATE sessions
     SET session_id = lower(hex(randomblob(16)))
@@ -54,10 +63,10 @@ export function createAppDb(dbPath = path.join('data', 'mila.db')) {
   const statements = {
     insertCode: db.prepare(`
       INSERT OR REPLACE INTO connection_codes
-      (code, label, expires_at, created_at) VALUES (?, ?, ?, ?)
+      (code, label, owner_json, expires_at, created_at) VALUES (?, ?, ?, ?, ?)
     `),
     getCode: db.prepare(`
-      SELECT code, label, expires_at AS expiresAt
+      SELECT code, label, owner_json AS ownerJson, expires_at AS expiresAt
       FROM connection_codes WHERE code = ?
     `),
     deleteCode: db.prepare('DELETE FROM connection_codes WHERE code = ?'),
@@ -65,15 +74,15 @@ export function createAppDb(dbPath = path.join('data', 'mila.db')) {
       'DELETE FROM connection_codes WHERE expires_at < ?',
     ),
     insertSession: db.prepare(`
-      INSERT INTO sessions (token_hash, session_id, label, created_at)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO sessions (token_hash, session_id, label, owner_json, created_at)
+      VALUES (?, ?, ?, ?, ?)
     `),
     getSession: db.prepare(`
-      SELECT token_hash AS tokenHash, label, created_at AS createdAt
+      SELECT token_hash AS tokenHash, label, owner_json AS ownerJson, created_at AS createdAt
       FROM sessions WHERE token_hash = ? AND revoked_at IS NULL
     `),
     listSessions: db.prepare(`
-      SELECT session_id AS id, label, created_at AS createdAt, revoked_at AS revokedAt
+      SELECT session_id AS id, label, owner_json AS ownerJson, created_at AS createdAt, revoked_at AS revokedAt
       FROM sessions ORDER BY created_at DESC LIMIT 100
     `),
     revokeSession: db.prepare(`
@@ -129,8 +138,8 @@ export function createAppDb(dbPath = path.join('data', 'mila.db')) {
   return {
     raw: db,
     close: () => db.close(),
-    createCode(code, label, expiresAt) {
-      statements.insertCode.run(code, label, expiresAt, Date.now());
+    createCode(code, label, ownerJson, expiresAt) {
+      statements.insertCode.run(code, label, ownerJson || null, expiresAt, Date.now());
     },
     getCode(code) {
       statements.deleteExpiredCodes.run(Date.now());
@@ -139,8 +148,8 @@ export function createAppDb(dbPath = path.join('data', 'mila.db')) {
     deleteCode(code) {
       statements.deleteCode.run(code);
     },
-    createSession(tokenHash, label, sessionId) {
-      statements.insertSession.run(tokenHash, sessionId, label, Date.now());
+    createSession(tokenHash, label, sessionId, ownerJson) {
+      statements.insertSession.run(tokenHash, sessionId, label, ownerJson || null, Date.now());
     },
     getSession(tokenHash) {
       return statements.getSession.get(tokenHash);

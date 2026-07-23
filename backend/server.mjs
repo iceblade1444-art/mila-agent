@@ -52,22 +52,64 @@ export function createMilaServer(options = {}) {
     send(res, status, body, {'Content-Type': 'application/json; charset=utf-8'});
   }
 
-  function createCode(label) {
+  function normalizeOwner(owner) {
+    if (!owner || typeof owner !== 'object') return null;
+    const clean = {
+      id: String(owner.id || owner.email || owner.name || '').trim().slice(0, 120),
+      email: String(owner.email || '').trim().slice(0, 180),
+      name: String(owner.name || '').trim().slice(0, 120),
+      role: String(owner.role || 'User').trim().slice(0, 40),
+    };
+    return clean.id || clean.email || clean.name ? clean : null;
+  }
+
+  function ownerFromJson(value) {
+    try {
+      const parsed = JSON.parse(value || 'null');
+      return normalizeOwner(parsed);
+    } catch {
+      return null;
+    }
+  }
+
+  function safeOwnerSlug(session) {
+    const owner = ownerFromJson(session.ownerJson);
+    const source = owner?.id || owner?.email || session.label || 'mobile-user';
+    return String(source).replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 100) || 'mobile-user';
+  }
+
+  function publicSession(session) {
+    const owner = ownerFromJson(session.ownerJson);
+    return {
+      label: session.label,
+      owner: owner || {
+        id: '',
+        email: '',
+        name: session.label,
+        role: 'Mobile user',
+      },
+    };
+  }
+
+  function createCode(label, owner = null) {
     const code = crypto.randomBytes(4).toString('hex').toUpperCase();
+    const cleanOwner = normalizeOwner(owner);
     db.createCode(
       code,
       label || 'ChatGPT account',
+      cleanOwner ? JSON.stringify(cleanOwner) : null,
       Date.now() + 10 * 60 * 1000,
     );
     return code;
   }
 
-  function createSession(label) {
+  function createSession(label, ownerJson = null) {
     const token = crypto.randomBytes(32).toString('base64url');
     db.createSession(
       hashToken(token, cfg.sessionSecret),
       label,
       crypto.randomUUID().replaceAll('-', ''),
+      ownerJson,
     );
     return token;
   }
@@ -117,12 +159,7 @@ export function createMilaServer(options = {}) {
   }
 
   function memoryPath(session) {
-    const owner = crypto
-      .createHash('sha256')
-      .update(session.label)
-      .digest('hex')
-      .slice(0, 20);
-    return `MILA/mobile-${owner}.md`;
+    return `Agentic OS/People/${safeOwnerSlug(session)}/MILA Mobile Memory.md`;
   }
 
   async function readMobileMemory(session) {
@@ -151,6 +188,30 @@ export function createMilaServer(options = {}) {
     }
     const items = [...indexed.values()];
     return {path: notePath, content: String(record.content || ''), items};
+  }
+
+  function summarizeTasks(board) {
+    const tasks = (board.columns || []).flatMap((column) =>
+      (column.tasks || []).map((task) => ({
+        ...task,
+        status: task.status || column.name,
+      })),
+    );
+    const activeStatuses = new Set(['triage', 'todo', 'scheduled', 'ready', 'running', 'review']);
+    return {
+      total: tasks.length,
+      open: tasks.filter((task) => activeStatuses.has(task.status)).length,
+      running: tasks.filter((task) => task.status === 'running').length,
+      blocked: tasks.filter((task) => task.status === 'blocked').length,
+      done: tasks.filter((task) => task.status === 'done').length,
+      recent: tasks.slice(0, 5).map((task) => ({
+        id: task.id,
+        title: task.title,
+        status: task.status,
+        priority: Number(task.priority) || 0,
+        assignee: task.assignee || '',
+      })),
+    };
   }
 
   const server = http.createServer(async (req, res) => {
@@ -190,9 +251,10 @@ export function createMilaServer(options = {}) {
           return;
         }
         const body = await readJson(req);
-        const label = String(body.label || '').trim() || 'MILA user';
-        const code = createCode(label);
-        sendJson(res, 200, {ok: true, code, label, expiresInSeconds: 600});
+        const label = String(body.label || body.owner?.email || body.owner?.name || '').trim() || 'MILA user';
+        const owner = normalizeOwner(body.owner);
+        const code = createCode(label, owner);
+        sendJson(res, 200, {ok: true, code, label, owner, expiresInSeconds: 600});
         return;
       }
 
@@ -201,7 +263,13 @@ export function createMilaServer(options = {}) {
           sendJson(res, 403, {error: 'Admin token required'});
           return;
         }
-        sendJson(res, 200, {devices: db.listSessions()});
+        sendJson(res, 200, {
+          devices: db.listSessions().map((session) => ({
+            ...session,
+            owner: ownerFromJson(session.ownerJson),
+            ownerJson: undefined,
+          })),
+        });
         return;
       }
 
@@ -296,8 +364,8 @@ export function createMilaServer(options = {}) {
         }
 
         db.deleteCode(code);
-        const token = createSession(record.label);
-        sendJson(res, 200, {token, label: record.label});
+        const token = createSession(record.label, record.ownerJson || null);
+        sendJson(res, 200, {token, ...publicSession(record)});
         return;
       }
 
@@ -311,9 +379,55 @@ export function createMilaServer(options = {}) {
         sendJson(res, 200, {
           ok: true,
           connected: true,
-          label: session.label,
+          ...publicSession(session),
           profiles: profiles.profiles || [],
           orchestration,
+        });
+        return;
+      }
+
+      if (req.method === 'GET' && url.pathname === '/v1/dashboard') {
+        const session = requireSession(req, res);
+        if (!session) return;
+        const [board, knowledge, operations, mila] = await Promise.all([
+          agenticRequest('/api/kanban/board'),
+          agenticRequest('/api/knowledge/status'),
+          agenticRequest('/api/operations/status').catch((error) => ({
+            available: false,
+            error: error.message,
+          })),
+          agenticRequest('/api/integrations/mila/status').catch((error) => ({
+            ok: false,
+            error: error.message,
+          })),
+        ]);
+        sendJson(res, 200, {
+          ok: true,
+          connected: true,
+          account: publicSession(session),
+          workspace: {
+            name: operations?.readiness?.workspace?.name || 'Agentic OS',
+            readiness: operations?.readiness?.status || 'unknown',
+            readinessScore: Number(operations?.readiness?.score) || 0,
+          },
+          tasks: summarizeTasks(board),
+          knowledge: {
+            ready: Boolean(knowledge.ready),
+            writable: Boolean(knowledge.writable),
+            notes: Number(knowledge.notes) || 0,
+            folders: Number(knowledge.folders) || 0,
+            mcpStatus: knowledge.mcp?.status || 'unknown',
+          },
+          operations: {
+            available: Boolean(operations.available),
+            fourC: operations.readiness?.status || 'unknown',
+            score: Number(operations.readiness?.score) || 0,
+          },
+          mila: {
+            voiceConfigured: Boolean(mila.voiceConfigured),
+            liveModel: mila.liveModel || cfg.geminiLiveModel,
+          },
+          syncedAt: Date.now(),
         });
         return;
       }
@@ -354,7 +468,7 @@ export function createMilaServer(options = {}) {
           method: 'POST',
           body: {},
         }).catch(() => {});
-        sendJson(res, 201, {...created, requestedBy: session.label});
+        sendJson(res, 201, {...created, requestedBy: publicSession(session)});
         return;
       }
 
@@ -540,8 +654,10 @@ export function createMilaServer(options = {}) {
           return;
         }
 
+        const body = await readJson(req);
+        const language = normalizeLanguage(body.language);
         const token = await createGeminiLiveToken({cfg, fetchImpl});
-        sendJson(res, 200, token);
+        sendJson(res, 200, {...token, language});
         return;
       }
 
@@ -557,6 +673,15 @@ export function createMilaServer(options = {}) {
   });
 
   return {server, db};
+}
+
+function normalizeLanguage(value) {
+  const raw = String(value || 'auto').trim();
+  if (['ru-RU', 'uz-UZ', 'en-US', 'auto'].includes(raw)) return raw;
+  if (raw.startsWith('uz')) return 'uz-UZ';
+  if (raw.startsWith('en')) return 'en-US';
+  if (raw.startsWith('ru')) return 'ru-RU';
+  return 'auto';
 }
 
 /// Creates a short-lived, single-use token for an on-device Live API session.
