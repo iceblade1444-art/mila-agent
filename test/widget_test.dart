@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -159,9 +161,14 @@ void main() {
     final client = MockClient((request) async {
       expect(request.url.toString(), 'https://mila.test/v1/voice/token');
       expect(request.headers['Authorization'], 'Bearer session-token');
+      expect(request.headers['Content-Type'], 'application/json');
+      expect(jsonDecode(request.body), {'language': 'uz-UZ'});
       return http.Response('{"token":"short-lived"}', 200);
     });
 
-    expect(await service.createToken(client: client), 'short-lived');
+    expect(
+      await service.createToken(language: 'uz-UZ', client: client),
+      'short-lived',
+    );
   });
 }

@@ -3,10 +3,17 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class MilaAccountSession {
-  const MilaAccountSession({required this.token, required this.label});
+  const MilaAccountSession({
+    required this.token,
+    required this.label,
+    this.ownerName = '',
+    this.ownerEmail = '',
+  });
 
   final String token;
   final String label;
+  final String ownerName;
+  final String ownerEmail;
 }
 
 class MilaAccountService {
@@ -39,12 +46,18 @@ class MilaAccountService {
       final json = _decode(response.body);
       final token = json['token'] as String? ?? '';
       final label = json['label'] as String? ?? 'MILA user';
+      final owner = ((json['owner'] as Map?) ?? const {}).cast<String, dynamic>();
       if (response.statusCode != 200 || token.isEmpty) {
         throw FormatException(
           json['error'] as String? ?? 'Could not connect the MILA account.',
         );
       }
-      return MilaAccountSession(token: token, label: label);
+      return MilaAccountSession(
+        token: token,
+        label: label,
+        ownerName: owner['name'] as String? ?? '',
+        ownerEmail: owner['email'] as String? ?? '',
+      );
     } finally {
       if (shouldClose) httpClient.close();
     }

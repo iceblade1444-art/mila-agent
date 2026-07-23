@@ -22,6 +22,16 @@ class ProvidersScreen extends ConsumerStatefulWidget {
   ConsumerState<ProvidersScreen> createState() => _ProvidersScreenState();
 }
 
+String _liveLanguageCode(String language) {
+  final normalized = language.trim().toLowerCase();
+  if (normalized.contains('uz') || normalized.contains('o\'zbek')) {
+    return 'uz-UZ';
+  }
+  if (normalized.contains('english') || normalized == 'en') return 'en-US';
+  if (normalized.contains('рус') || normalized == 'ru') return 'ru-RU';
+  return 'auto';
+}
+
 class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
   final _serverUrl = TextEditingController();
   final _connectionCode = TextEditingController();
@@ -75,6 +85,22 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
       await secure.write(SecureStore.milaBackendUrl, _serverUrl.text);
       await secure.write(SecureStore.openAiAccountToken, session.token);
       await secure.write(SecureStore.openAiAccountLabel, session.label);
+      if (session.ownerName.isNotEmpty || session.ownerEmail.isNotEmpty) {
+        final currentProfile = ref.read(profileProvider);
+        ref
+            .read(profileProvider.notifier)
+            .save(
+              currentProfile.copyWith(
+                name: session.ownerName.isNotEmpty
+                    ? session.ownerName
+                    : currentProfile.name,
+                email: session.ownerEmail.isNotEmpty
+                    ? session.ownerEmail
+                    : currentProfile.email,
+                signedIn: true,
+              ),
+            );
+      }
       final storedToken =
           await secure.read(SecureStore.openAiAccountToken) ?? '';
       if (storedToken != session.token) {
@@ -93,7 +119,9 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
             await secure.read(SecureStore.milaBackendUrl),
           ),
           sessionToken: storedToken,
-        ).createToken();
+        ).createToken(
+          language: _liveLanguageCode(ref.read(settingsProvider).language),
+        );
       } on GeminiLiveTokenException catch (error) {
         voiceCheck =
             ' ${l10n.pick(ru: 'Подключено, но голос требует внимания', en: 'Connected, but voice needs attention', uz: 'Ulandi, lekin ovoz sozlamasi eʼtibor talab qiladi')}: ${error.message}';
@@ -104,6 +132,7 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
         _connectionCode.clear();
       });
       await ref.read(agenticTasksProvider.notifier).refresh();
+      await ref.read(agenticDashboardProvider.notifier).refresh();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

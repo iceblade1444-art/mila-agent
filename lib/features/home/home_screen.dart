@@ -7,6 +7,7 @@ import '../../core/theme/mila_theme.dart';
 import '../../core/widgets/common.dart';
 import '../../core/widgets/voice_orb.dart';
 import '../../services/connectivity/connectivity_provider.dart';
+import '../../services/agentic/agentic_os_service.dart';
 import '../../services/llm/llm_service.dart';
 import '../../services/storage/stores.dart';
 
@@ -35,6 +36,7 @@ class _HomeBody extends ConsumerWidget {
     final text = Theme.of(context).textTheme;
     final l10n = context.l10n;
     final profile = ref.watch(profileProvider);
+    final dashboardState = ref.watch(agenticDashboardProvider);
     final hour = DateTime.now().hour;
     final greeting = l10n.greeting(hour);
 
@@ -116,6 +118,8 @@ class _HomeBody extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 24),
+        _AgenticDashboardCard(state: dashboardState),
+        const SizedBox(height: 24),
         SectionHeader(
           title: l10n.pick(ru: 'Подсказки', en: 'Suggestions', uz: 'Takliflar'),
           action: l10n.pick(ru: 'Все', en: 'See all', uz: 'Hammasi'),
@@ -168,6 +172,226 @@ class _HomeBody extends ConsumerWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+class _AgenticDashboardCard extends ConsumerWidget {
+  const _AgenticDashboardCard({required this.state});
+
+  final AgenticDashboardState state;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final text = Theme.of(context).textTheme;
+    final l10n = context.l10n;
+    final dashboard = state.dashboard;
+    return GlassCard(
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                state.connected
+                    ? Icons.cloud_done_rounded
+                    : Icons.cloud_off_rounded,
+                color: state.connected
+                    ? MilaColors.success
+                    : MilaColors.textTertiary,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Agentic OS', style: text.titleMedium),
+                    Text(
+                      dashboard == null
+                          ? l10n.pick(
+                              ru: 'Подключите аккаунт в AI Providers',
+                              en: 'Connect your account in AI Providers',
+                              uz: 'Hisobni AI Providers bo\'limida ulang',
+                            )
+                          : '${dashboard.ownerName.isEmpty ? dashboard.accountLabel : dashboard.ownerName} · ${dashboard.workspaceName}',
+                      overflow: TextOverflow.ellipsis,
+                      style: text.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                onPressed: () =>
+                    ref.read(agenticDashboardProvider.notifier).refresh(),
+                icon: state.loading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh_rounded),
+              ),
+            ],
+          ),
+          if (state.error.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              state.error,
+              style: text.bodySmall?.copyWith(color: MilaColors.danger),
+            ),
+          ],
+          if (dashboard != null) ...[
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: _MetricTile(
+                    label: l10n.pick(
+                      ru: 'Готовность',
+                      en: 'Readiness',
+                      uz: 'Tayyorlik',
+                    ),
+                    value: '${dashboard.readinessScore}%',
+                    icon: Icons.verified_rounded,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _MetricTile(
+                    label: l10n.pick(ru: 'Открыто', en: 'Open', uz: 'Ochiq'),
+                    value: '${dashboard.openTasks}',
+                    icon: Icons.view_kanban_rounded,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _MetricTile(
+                    label: l10n.pick(ru: 'Блоки', en: 'Blocked', uz: 'Blok'),
+                    value: '${dashboard.blockedTasks}',
+                    icon: Icons.report_gmailerrorred_rounded,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _StatusRow(
+              icon: Icons.hub_rounded,
+              label: l10n.pick(
+                ru: 'Obsidian graph',
+                en: 'Obsidian graph',
+                uz: 'Obsidian grafigi',
+              ),
+              value:
+                  '${dashboard.knowledgeNotes} notes · MCP ${dashboard.obsidianMcpStatus}',
+            ),
+            _StatusRow(
+              icon: Icons.mic_rounded,
+              label: l10n.pick(
+                ru: 'MILA Live',
+                en: 'MILA Live',
+                uz: 'MILA Live',
+              ),
+              value: dashboard.milaVoiceConfigured
+                  ? dashboard.liveModel
+                  : l10n.pick(
+                      ru: 'Gemini не настроен',
+                      en: 'Gemini is not configured',
+                      uz: 'Gemini sozlanmagan',
+                    ),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: GradientButton(
+                    label: l10n.pick(
+                      ru: 'Открыть задачи',
+                      en: 'Open tasks',
+                      uz: 'Vazifalar',
+                    ),
+                    onPressed: () => context.go('/tasks'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                IconButton.filledTonal(
+                  onPressed: () => context.go('/chat'),
+                  icon: const Icon(Icons.chat_bubble_outline_rounded),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _MetricTile extends StatelessWidget {
+  const _MetricTile({
+    required this.label,
+    required this.value,
+    required this.icon,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        color: Colors.white.withValues(alpha: .05),
+        border: Border.all(color: MilaColors.cardBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: MilaColors.cyan),
+          const SizedBox(height: 8),
+          Text(value, style: text.titleLarge),
+          Text(label, overflow: TextOverflow.ellipsis, style: text.bodySmall),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatusRow extends StatelessWidget {
+  const _StatusRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: MilaColors.textTertiary),
+          const SizedBox(width: 10),
+          Expanded(child: Text(label, style: text.bodyMedium)),
+          Flexible(
+            child: Text(
+              value,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+              style: text.bodySmall,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

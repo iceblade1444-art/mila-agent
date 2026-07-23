@@ -11,7 +11,11 @@ void main() {
       expect(request.url.toString(), 'https://example.test/v1/auth/device');
       expect(jsonDecode(request.body), {'code': 'AB12CD34'});
       return http.Response(
-        jsonEncode({'token': 'session-token', 'label': 'Mobile user'}),
+        jsonEncode({
+          'token': 'session-token',
+          'label': 'Mobile user',
+          'owner': {'name': 'Creator', 'email': 'creator@example.com'},
+        }),
         200,
         headers: {'Content-Type': 'application/json'},
       );
@@ -25,6 +29,8 @@ void main() {
 
     expect(session.token, 'session-token');
     expect(session.label, 'Mobile user');
+    expect(session.ownerName, 'Creator');
+    expect(session.ownerEmail, 'creator@example.com');
   });
 
   test('rejects an invalid connection code before making a request', () async {

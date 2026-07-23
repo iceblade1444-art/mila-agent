@@ -41,6 +41,11 @@ class AgenticOsService {
     return token.isNotEmpty;
   }
 
+  Future<AgenticDashboard> dashboard({http.Client? client}) async {
+    final json = await _request('GET', '/v1/dashboard', client: client);
+    return AgenticDashboard.fromJson(json);
+  }
+
   Future<List<AgenticTask>> listTasks({http.Client? client}) async {
     final json = await _request('GET', '/v1/tasks', client: client);
     return ((json['tasks'] as List?) ?? const [])
@@ -193,6 +198,144 @@ class AgenticOsService {
   }
 }
 
+class AgenticDashboard {
+  const AgenticDashboard({
+    required this.connected,
+    required this.accountLabel,
+    required this.ownerName,
+    required this.ownerEmail,
+    required this.workspaceName,
+    required this.readiness,
+    required this.readinessScore,
+    required this.openTasks,
+    required this.runningTasks,
+    required this.blockedTasks,
+    required this.knowledgeNotes,
+    required this.knowledgeFolders,
+    required this.obsidianMcpStatus,
+    required this.milaVoiceConfigured,
+    required this.liveModel,
+    this.syncedAt,
+  });
+
+  final bool connected;
+  final String accountLabel;
+  final String ownerName;
+  final String ownerEmail;
+  final String workspaceName;
+  final String readiness;
+  final int readinessScore;
+  final int openTasks;
+  final int runningTasks;
+  final int blockedTasks;
+  final int knowledgeNotes;
+  final int knowledgeFolders;
+  final String obsidianMcpStatus;
+  final bool milaVoiceConfigured;
+  final String liveModel;
+  final DateTime? syncedAt;
+
+  factory AgenticDashboard.fromJson(Map<String, dynamic> json) {
+    final account = ((json['account'] as Map?) ?? const {})
+        .cast<String, dynamic>();
+    final owner = ((account['owner'] as Map?) ?? const {})
+        .cast<String, dynamic>();
+    final workspace = ((json['workspace'] as Map?) ?? const {})
+        .cast<String, dynamic>();
+    final tasks = ((json['tasks'] as Map?) ?? const {}).cast<String, dynamic>();
+    final knowledge = ((json['knowledge'] as Map?) ?? const {})
+        .cast<String, dynamic>();
+    final mila = ((json['mila'] as Map?) ?? const {}).cast<String, dynamic>();
+    final synced = json['syncedAt'];
+    return AgenticDashboard(
+      connected: json['connected'] == true,
+      accountLabel: account['label'] as String? ?? '',
+      ownerName: owner['name'] as String? ?? '',
+      ownerEmail: owner['email'] as String? ?? '',
+      workspaceName: workspace['name'] as String? ?? 'Agentic OS',
+      readiness: workspace['readiness'] as String? ?? 'unknown',
+      readinessScore: (workspace['readinessScore'] as num?)?.toInt() ?? 0,
+      openTasks: (tasks['open'] as num?)?.toInt() ?? 0,
+      runningTasks: (tasks['running'] as num?)?.toInt() ?? 0,
+      blockedTasks: (tasks['blocked'] as num?)?.toInt() ?? 0,
+      knowledgeNotes: (knowledge['notes'] as num?)?.toInt() ?? 0,
+      knowledgeFolders: (knowledge['folders'] as num?)?.toInt() ?? 0,
+      obsidianMcpStatus: knowledge['mcpStatus'] as String? ?? 'unknown',
+      milaVoiceConfigured: mila['voiceConfigured'] == true,
+      liveModel: mila['liveModel'] as String? ?? '',
+      syncedAt: synced is num
+          ? DateTime.fromMillisecondsSinceEpoch(synced.toInt())
+          : null,
+    );
+  }
+}
+
+class AgenticDashboardState {
+  const AgenticDashboardState({
+    this.dashboard,
+    this.connected = false,
+    this.loading = false,
+    this.error = '',
+  });
+
+  final AgenticDashboard? dashboard;
+  final bool connected;
+  final bool loading;
+  final String error;
+
+  AgenticDashboardState copyWith({
+    AgenticDashboard? dashboard,
+    bool? connected,
+    bool? loading,
+    String? error,
+  }) => AgenticDashboardState(
+    dashboard: dashboard ?? this.dashboard,
+    connected: connected ?? this.connected,
+    loading: loading ?? this.loading,
+    error: error ?? this.error,
+  );
+}
+
+class AgenticDashboardController extends StateNotifier<AgenticDashboardState> {
+  AgenticDashboardController(this._ref) : super(const AgenticDashboardState()) {
+    unawaited(refresh());
+    _timer = Timer.periodic(
+      const Duration(seconds: 20),
+      (_) => unawaited(refresh(silent: true)),
+    );
+  }
+
+  final Ref _ref;
+  Timer? _timer;
+
+  Future<void> refresh({bool silent = false}) async {
+    final service = _ref.read(agenticOsServiceProvider);
+    if (!await service.isConnected()) {
+      state = const AgenticDashboardState();
+      return;
+    }
+    if (!silent) {
+      state = state.copyWith(connected: true, loading: true, error: '');
+    }
+    try {
+      final dashboard = await service.dashboard();
+      state = AgenticDashboardState(dashboard: dashboard, connected: true);
+    } on AgenticOsException catch (error) {
+      state = state.copyWith(
+        connected: true,
+        loading: false,
+        error: error.message,
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+}
+
 class AgenticTasksState {
   const AgenticTasksState({
     this.tasks = const [],
@@ -291,4 +434,9 @@ final agenticOsServiceProvider = Provider<AgenticOsService>(
 final agenticTasksProvider =
     StateNotifierProvider<AgenticTasksController, AgenticTasksState>(
       AgenticTasksController.new,
+    );
+
+final agenticDashboardProvider =
+    StateNotifierProvider<AgenticDashboardController, AgenticDashboardState>(
+      AgenticDashboardController.new,
     );

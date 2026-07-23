@@ -278,10 +278,13 @@ class VoiceController extends StateNotifier<VoiceState> {
     String? secureTokenError;
     if (backendUrl.isNotEmpty && sessionToken.isNotEmpty) {
       try {
-        accessToken = await GeminiLiveTokenService(
-          baseUrl: backendUrl,
-          sessionToken: sessionToken,
-        ).createToken();
+        accessToken =
+            await GeminiLiveTokenService(
+              baseUrl: backendUrl,
+              sessionToken: sessionToken,
+            ).createToken(
+              language: _liveLanguageCode(_ref.read(settingsProvider).language),
+            );
       } on GeminiLiveTokenException catch (error) {
         secureTokenError = error.message;
       }
@@ -643,4 +646,14 @@ class VoiceController extends StateNotifier<VoiceState> {
     _recorder.dispose();
     super.dispose();
   }
+}
+
+String _liveLanguageCode(String language) {
+  final normalized = language.trim().toLowerCase();
+  if (normalized.contains('uz') || normalized.contains('o\'zbek')) {
+    return 'uz-UZ';
+  }
+  if (normalized.contains('english') || normalized == 'en') return 'en-US';
+  if (normalized.contains('рус') || normalized == 'ru') return 'ru-RU';
+  return 'auto';
 }
