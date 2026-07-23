@@ -314,66 +314,84 @@ class VoiceController extends StateNotifier<VoiceState> {
   }
 
   Future<bool> _startLiveKitIfAvailable() async {
-    final secure = _ref.read(secureStoreProvider);
-    final backendUrl = AppConfig.configuredBackendUrl(
-      await secure.read(SecureStore.milaBackendUrl),
-    );
-    final sessionToken =
-        await secure.read(SecureStore.openAiAccountToken) ?? '';
-    if (backendUrl.isEmpty || sessionToken.isEmpty) return false;
+    lk.Session? session;
+    try {
+      final secure = _ref.read(secureStoreProvider);
+      final backendUrl = AppConfig.configuredBackendUrl(
+        await secure.read(SecureStore.milaBackendUrl),
+      );
+      final sessionToken =
+          await secure.read(SecureStore.openAiAccountToken) ?? '';
+      if (backendUrl.isEmpty || sessionToken.isEmpty) return false;
 
-    final source = MilaLiveKitTokenSource(
-      baseUrl: backendUrl,
-      sessionToken: sessionToken,
-      language: _liveLanguageCode(_ref.read(settingsProvider).language),
-    );
-    final session = lk.Session.fromFixedTokenSource(
-      source,
-      options: lk.SessionOptions(
-        preConnectAudio: true,
-        agentConnectTimeout: const Duration(seconds: 20),
-      ),
-    );
-    _liveKitSession = session;
-    _usingLiveKit = true;
-    _liveKitWasSpeaking = false;
-    _liveKitCommitted.clear();
-    _sessionTranscript.clear();
+      final source = MilaLiveKitTokenSource(
+        baseUrl: backendUrl,
+        sessionToken: sessionToken,
+        language: _liveLanguageCode(_ref.read(settingsProvider).language),
+      );
+      session = lk.Session.fromFixedTokenSource(
+        source,
+        options: lk.SessionOptions(
+          preConnectAudio: true,
+          agentConnectTimeout: const Duration(seconds: 20),
+        ),
+      );
+      _liveKitSession = session;
+      _usingLiveKit = true;
+      _liveKitWasSpeaking = false;
+      _liveKitCommitted.clear();
+      _sessionTranscript.clear();
+      session
+        ..addListener(_onLiveKitChanged)
+        ..agent.addListener(_onLiveKitChanged);
+
+      await session.start();
+      if (session.error != null ||
+          session.connectionState == lk.ConnectionState.disconnected) {
+        await _discardLiveKitSession(session);
+        return false;
+      }
+
+      final deadline = DateTime.now().add(const Duration(seconds: 20));
+      while (!session.agent.isConnected && DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        if (session.error != null) break;
+      }
+      if (!session.agent.isConnected) {
+        await _discardLiveKitSession(session);
+        return false;
+      }
+
+      _onLiveKitChanged();
+      return true;
+    } catch (_) {
+      if (session != null) {
+        await _discardLiveKitSession(session);
+      } else {
+        _liveKitSession = null;
+        _usingLiveKit = false;
+      }
+      return false;
+    }
+  }
+
+  Future<void> _discardLiveKitSession(lk.Session session) async {
     session
-      ..addListener(_onLiveKitChanged)
-      ..agent.addListener(_onLiveKitChanged);
-
-    await session.start();
-    if (session.error != null ||
-        session.connectionState == lk.ConnectionState.disconnected) {
-      session
-        ..removeListener(_onLiveKitChanged)
-        ..agent.removeListener(_onLiveKitChanged);
+      ..removeListener(_onLiveKitChanged)
+      ..agent.removeListener(_onLiveKitChanged);
+    try {
       await session.end();
-      session.dispose();
+    } catch (_) {
+      // A failed ICE handshake can also make session shutdown throw.
+    }
+    session.dispose();
+    if (identical(_liveKitSession, session)) {
       _liveKitSession = null;
-      _usingLiveKit = false;
-      return false;
     }
-
-    final deadline = DateTime.now().add(const Duration(seconds: 20));
-    while (!session.agent.isConnected && DateTime.now().isBefore(deadline)) {
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-      if (session.error != null) break;
+    _usingLiveKit = false;
+    if (mounted) {
+      state = const VoiceState(phase: VoicePhase.connecting);
     }
-    if (!session.agent.isConnected) {
-      session
-        ..removeListener(_onLiveKitChanged)
-        ..agent.removeListener(_onLiveKitChanged);
-      await session.end();
-      session.dispose();
-      _liveKitSession = null;
-      _usingLiveKit = false;
-      return false;
-    }
-
-    _onLiveKitChanged();
-    return true;
   }
 
   void _onLiveKitChanged() {
