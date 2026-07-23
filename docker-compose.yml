@@ -21,6 +21,11 @@ services:
       - ./backend/.env
     environment:
       LIVEKIT_URL: ws://livekit:7880
+      MILA_LIVE_MODEL: ${MILA_LIVE_MODEL:-gemini-2.5-flash-native-audio-preview-12-2025}
+      MILA_AFFECTIVE_DIALOG: ${MILA_AFFECTIVE_DIALOG:-true}
+      MILA_VOICE: ${MILA_VOICE:-Aoede}
+      MILA_VOICE_TEMPERATURE: ${MILA_VOICE_TEMPERATURE:-0.8}
+      GEMINI_API_VERSION: ${GEMINI_API_VERSION:-v1alpha}
 
   mila-backend:
     build: ./backend

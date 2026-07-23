@@ -112,10 +112,28 @@ updates the local MILA profile; provider API keys remain separate.
 
 | Purpose | Default |
 |---|---|
-| Voice (Gemini Live) | `gemini-3.1-flash-live-preview` |
+| Server voice (LiveKit + affective Gemini Live) | `gemini-2.5-flash-native-audio-preview-12-2025` |
+| Direct mobile fallback | `gemini-3.1-flash-live-preview` |
 | Gemini text | `gemini-3.5-flash` |
 
 If Google releases new models, type the new name in Settings.
+
+The server voice agent enables affective dialogue by default. MILA gently
+adapts pace, warmth, and intonation to the user's emotional tone while
+preserving Russian, Uzbek, English, and mixed speech. Production overrides are
+read from `backend/.env`:
+
+```dotenv
+MILA_LIVE_MODEL=gemini-2.5-flash-native-audio-preview-12-2025
+MILA_VOICE=Aoede
+MILA_AFFECTIVE_DIALOG=true
+MILA_VOICE_TEMPERATURE=0.8
+GEMINI_API_VERSION=v1alpha
+```
+
+Gemini 3.1 Live can still be selected through `MILA_LIVE_MODEL`, but MILA
+automatically disables affective dialogue for 3.1 because that model does not
+support the capability.
 
 ## Building for release
 
