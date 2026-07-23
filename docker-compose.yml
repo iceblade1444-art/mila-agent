@@ -1,7 +1,32 @@
 services:
+  livekit:
+    image: livekit/livekit-server:v1.13.1
+    restart: unless-stopped
+    command: --config /etc/livekit.yaml
+    env_file:
+      - ./backend/.env
+    ports:
+      - "${LIVEKIT_BIND_ADDRESS:-0.0.0.0}:7880:7880/tcp"
+      - "${LIVEKIT_BIND_ADDRESS:-0.0.0.0}:7881:7881/tcp"
+      - "${LIVEKIT_BIND_ADDRESS:-0.0.0.0}:7882:7882/udp"
+    volumes:
+      - ./livekit/livekit.yaml:/etc/livekit.yaml:ro
+
+  mila-voice-agent:
+    build: ./voice-agent
+    restart: unless-stopped
+    depends_on:
+      - livekit
+    env_file:
+      - ./backend/.env
+    environment:
+      LIVEKIT_URL: ws://livekit:7880
+
   mila-backend:
     build: ./backend
     restart: unless-stopped
+    depends_on:
+      - livekit
     ports:
       - "${BIND_ADDRESS:-127.0.0.1}:${HOST_PORT:-8791}:8787"
     env_file:

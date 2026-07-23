@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {test} from 'node:test';
+import {TokenVerifier} from 'livekit-server-sdk';
 
 import {createMilaServer} from '../server.mjs';
 
@@ -512,6 +513,59 @@ test('voice token is protected and never exposes the Gemini API key', async () =
   assert.equal(body.uses, 1);
   assert.equal(body.fieldMask, 'model');
   assert.equal(body.bidiGenerateContentSetup.model, 'models/gemini-3.1-flash-live-preview');
+});
+
+test('LiveKit token uses the paired account and a private one-time room', async () => {
+  await withServer(
+    {
+      config: {
+        adminToken: 'admin-secret',
+        livekitUrl: 'wss://voice.example.test/rtc',
+        livekitApiKey: 'livekit-key',
+        livekitApiSecret: 'livekit-secret-with-enough-entropy',
+      },
+    },
+    async (baseUrl) => {
+      const denied = await fetch(`${baseUrl}/v1/voice/livekit-token`, {
+        method: 'POST',
+      });
+      assert.equal(denied.status, 401);
+
+      const session = await connectMobile(baseUrl, 'creator@example.test', {
+        id: 'creator',
+        email: 'creator@example.test',
+        name: 'Creator',
+        role: 'Creator',
+      });
+      const response = await fetch(`${baseUrl}/v1/voice/livekit-token`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({language: 'uz-UZ'}),
+      });
+      assert.equal(response.status, 201);
+      const payload = await response.json();
+      assert.equal(payload.server_url, 'wss://voice.example.test/rtc');
+      assert.match(payload.room_name, /^mila-[0-9a-f-]{36}$/);
+      assert.equal(payload.language, 'uz-UZ');
+
+      const claims = await new TokenVerifier(
+        'livekit-key',
+        'livekit-secret-with-enough-entropy',
+      ).verify(payload.participant_token);
+      assert.equal(claims.name, 'Creator');
+      assert.equal(claims.video.roomJoin, true);
+      assert.equal(claims.video.room, payload.room_name);
+      assert.equal(claims.video.canPublish, true);
+      assert.equal(claims.video.canSubscribe, true);
+      assert.equal(
+        JSON.parse(claims.metadata).owner.email,
+        'creator@example.test',
+      );
+    },
+  );
 });
 
 test('chat stream proxies OpenAI SSE after connection', async () => {

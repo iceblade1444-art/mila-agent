@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import {AccessToken} from 'livekit-server-sdk';
 
 import {createAppDb} from './db.mjs';
 
@@ -19,6 +20,9 @@ const config = {
   geminiApiKey: process.env.GEMINI_API_KEY || '',
   geminiLiveModel:
     process.env.GEMINI_LIVE_MODEL || 'gemini-3.1-flash-live-preview',
+  livekitUrl: process.env.LIVEKIT_URL || '',
+  livekitApiKey: process.env.LIVEKIT_API_KEY || '',
+  livekitApiSecret: process.env.LIVEKIT_API_SECRET || '',
   sessionSecret: process.env.SESSION_SECRET || 'dev-session-secret',
   dbPath: process.env.DB_PATH || path.join(dirname, 'data', 'mila.db'),
   downloadsDir: process.env.DOWNLOADS_DIR || path.join(dirname, 'downloads'),
@@ -240,6 +244,9 @@ export function createMilaServer(options = {}) {
           accountConnectionsEnabled: cfg.enableOpenAiAccount,
           subscriptionRequired: cfg.requireActiveSubscription,
           liveModel: cfg.geminiLiveModel,
+          livekitConfigured: Boolean(
+            cfg.livekitUrl && cfg.livekitApiKey && cfg.livekitApiSecret,
+          ),
           chatModel: cfg.defaultModel,
         });
         return;
@@ -661,6 +668,67 @@ export function createMilaServer(options = {}) {
         return;
       }
 
+      if (req.method === 'POST' && url.pathname === '/v1/voice/livekit-token') {
+        const session = requireSession(req, res);
+        if (!session) return;
+
+        if (
+          !cfg.livekitUrl ||
+          !cfg.livekitApiKey ||
+          !cfg.livekitApiSecret
+        ) {
+          sendJson(res, 503, {error: 'LiveKit voice transport is not configured'});
+          return;
+        }
+
+        if (cfg.requireActiveSubscription) {
+          const subscription = db.getSubscription(session.label);
+          if (!subscription || subscription.activeUntil < Date.now()) {
+            sendJson(res, 402, {
+              error: 'Active subscription required',
+              label: session.label,
+            });
+            return;
+          }
+        }
+
+        const body = await readJson(req);
+        const language = normalizeLanguage(body.language);
+        const owner = ownerFromJson(session.ownerJson);
+        const room = `mila-${crypto.randomUUID()}`;
+        const identityBase = owner?.id || owner?.email || session.label;
+        const identity = `${safeIdentity(identityBase)}-${crypto.randomBytes(4).toString('hex')}`;
+        const token = new AccessToken(
+          cfg.livekitApiKey,
+          cfg.livekitApiSecret,
+          {
+            identity,
+            name: owner?.name || session.label || 'MILA user',
+            ttl: '15m',
+            metadata: JSON.stringify({
+              owner: normalizeOwner(owner),
+              language,
+              source: 'mila-mobile',
+            }),
+          },
+        );
+        token.addGrant({
+          roomJoin: true,
+          room,
+          canPublish: true,
+          canSubscribe: true,
+          canPublishData: true,
+        });
+
+        sendJson(res, 201, {
+          server_url: cfg.livekitUrl,
+          participant_token: await token.toJwt(),
+          room_name: room,
+          language,
+        });
+        return;
+      }
+
       sendJson(res, 404, {error: 'Not found'});
     } catch (error) {
       const status = Number(error.status);
@@ -682,6 +750,14 @@ function normalizeLanguage(value) {
   if (raw.startsWith('en')) return 'en-US';
   if (raw.startsWith('ru')) return 'ru-RU';
   return 'auto';
+}
+
+function safeIdentity(value) {
+  return String(value || 'mobile-user')
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, '-')
+    .replace(/-+/g, '-')
+    .slice(0, 80) || 'mobile-user';
 }
 
 /// Creates a short-lived, single-use token for an on-device Live API session.

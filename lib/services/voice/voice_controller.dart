@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:livekit_client/livekit_client.dart' as lk;
 import 'package:record/record.dart';
 
 import '../../core/config/app_config.dart';
@@ -12,6 +13,7 @@ import '../llm/llm_service.dart';
 import '../storage/stores.dart';
 import 'gemini_live_client.dart';
 import 'gemini_live_token_service.dart';
+import 'mila_livekit_token_source.dart';
 import 'pcm_stream_player.dart';
 
 enum VoicePhase { idle, connecting, listening, thinking, speaking, error }
@@ -69,6 +71,11 @@ class VoiceController extends StateNotifier<VoiceState> {
   final Ref _ref;
 
   GeminiLiveClient? _client;
+  lk.Session? _liveKitSession;
+  bool _usingLiveKit = false;
+  bool _liveKitWasSpeaking = false;
+  Timer? _liveKitCommitTimer;
+  final Set<String> _liveKitCommitted = {};
   final AudioRecorder _recorder = AudioRecorder();
   StreamSubscription<Uint8List>? _micSub;
   final PcmStreamPlayer _player = PcmStreamPlayer();
@@ -174,6 +181,10 @@ class VoiceController extends StateNotifier<VoiceState> {
         return;
       }
 
+      if (await _startLiveKitIfAvailable()) {
+        return;
+      }
+
       final credentials = await _liveCredentials();
 
       final settings = _ref.read(settingsProvider);
@@ -228,6 +239,30 @@ class VoiceController extends StateNotifier<VoiceState> {
   }
 
   Future<void> stop() async {
+    if (_usingLiveKit) {
+      _commitLiveKitMessages(force: true);
+      final session = _liveKitSession;
+      _liveKitSession = null;
+      _usingLiveKit = false;
+      _liveKitCommitTimer?.cancel();
+      _liveKitCommitTimer = null;
+      if (session != null) {
+        session
+          ..removeListener(_onLiveKitChanged)
+          ..agent.removeListener(_onLiveKitChanged);
+        await session.end();
+        session.dispose();
+      }
+      state = const VoiceState();
+      if (_sessionTranscript.isNotEmpty) {
+        final transcript = List<String>.from(_sessionTranscript);
+        _sessionTranscript.clear();
+        unawaited(
+          _ref.read(llmServiceProvider).mineMemoriesFromTranscript(transcript),
+        );
+      }
+      return;
+    }
     _commitTranscripts(force: true);
     _teardown();
     state = const VoiceState();
@@ -246,13 +281,20 @@ class VoiceController extends StateNotifier<VoiceState> {
   }
 
   void sendVideoFrame(Uint8List jpeg) {
-    if (state.active) _client?.sendVideoFrame(jpeg);
+    if (state.active && !_usingLiveKit) _client?.sendVideoFrame(jpeg);
   }
 
   /// Stops the current answer and returns to listening. The microphone is
   /// intentionally gated while assistant audio is playing so the device
   /// speaker can never become a new user turn.
   Future<void> interrupt() async {
+    if (_usingLiveKit) {
+      await _liveKitSession?.room.localParticipant?.setMicrophoneEnabled(true);
+      if (mounted) {
+        state = state.copyWith(phase: VoicePhase.listening, outputLevel: 0);
+      }
+      return;
+    }
     if (state.phase != VoicePhase.speaking) return;
     _manualInterruption = true;
     _feedGeneration++;
@@ -269,6 +311,165 @@ class VoiceController extends StateNotifier<VoiceState> {
         assistantPartial: '',
       );
     }
+  }
+
+  Future<bool> _startLiveKitIfAvailable() async {
+    final secure = _ref.read(secureStoreProvider);
+    final backendUrl = AppConfig.configuredBackendUrl(
+      await secure.read(SecureStore.milaBackendUrl),
+    );
+    final sessionToken =
+        await secure.read(SecureStore.openAiAccountToken) ?? '';
+    if (backendUrl.isEmpty || sessionToken.isEmpty) return false;
+
+    final source = MilaLiveKitTokenSource(
+      baseUrl: backendUrl,
+      sessionToken: sessionToken,
+      language: _liveLanguageCode(_ref.read(settingsProvider).language),
+    );
+    final session = lk.Session.fromFixedTokenSource(
+      source,
+      options: lk.SessionOptions(
+        preConnectAudio: true,
+        agentConnectTimeout: const Duration(seconds: 20),
+      ),
+    );
+    _liveKitSession = session;
+    _usingLiveKit = true;
+    _liveKitWasSpeaking = false;
+    _liveKitCommitted.clear();
+    _sessionTranscript.clear();
+    session
+      ..addListener(_onLiveKitChanged)
+      ..agent.addListener(_onLiveKitChanged);
+
+    await session.start();
+    if (session.error != null ||
+        session.connectionState == lk.ConnectionState.disconnected) {
+      session
+        ..removeListener(_onLiveKitChanged)
+        ..agent.removeListener(_onLiveKitChanged);
+      await session.end();
+      session.dispose();
+      _liveKitSession = null;
+      _usingLiveKit = false;
+      return false;
+    }
+
+    final deadline = DateTime.now().add(const Duration(seconds: 20));
+    while (!session.agent.isConnected && DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      if (session.error != null) break;
+    }
+    if (!session.agent.isConnected) {
+      session
+        ..removeListener(_onLiveKitChanged)
+        ..agent.removeListener(_onLiveKitChanged);
+      await session.end();
+      session.dispose();
+      _liveKitSession = null;
+      _usingLiveKit = false;
+      return false;
+    }
+
+    _onLiveKitChanged();
+    return true;
+  }
+
+  void _onLiveKitChanged() {
+    final session = _liveKitSession;
+    if (!mounted || !_usingLiveKit || session == null) return;
+    final error = session.error;
+    if (error != null) {
+      state = VoiceState(phase: VoicePhase.error, error: error.message);
+      return;
+    }
+
+    final agentState = session.agent.agentState;
+    final phase = switch (agentState) {
+      lk.AgentState.speaking => VoicePhase.speaking,
+      lk.AgentState.thinking => VoicePhase.thinking,
+      lk.AgentState.listening || lk.AgentState.idle => VoicePhase.listening,
+      lk.AgentState.initializing || null => VoicePhase.connecting,
+    };
+    final messages = session.messages;
+    final userPartial =
+        messages
+            .where((message) => message.content is lk.UserTranscript)
+            .lastOrNull
+            ?.content
+            .text ??
+        '';
+    final assistantPartial =
+        messages
+            .where((message) => message.content is lk.AgentTranscript)
+            .lastOrNull
+            ?.content
+            .text ??
+        '';
+
+    state = state.copyWith(
+      phase: phase,
+      userPartial: userPartial,
+      assistantPartial: assistantPartial,
+      error: '',
+    );
+
+    if (agentState == lk.AgentState.speaking) {
+      _liveKitWasSpeaking = true;
+      _commitLiveKitUsers();
+    } else if (_liveKitWasSpeaking &&
+        (agentState == lk.AgentState.listening ||
+            agentState == lk.AgentState.idle)) {
+      _liveKitWasSpeaking = false;
+      _liveKitCommitTimer?.cancel();
+      _liveKitCommitTimer = Timer(
+        const Duration(milliseconds: 350),
+        _commitLiveKitMessages,
+      );
+    }
+  }
+
+  void _commitLiveKitUsers() {
+    final session = _liveKitSession;
+    if (session == null) return;
+    for (final message in session.messages) {
+      if (message.content is! lk.UserTranscript &&
+          message.content is! lk.UserInput) {
+        continue;
+      }
+      _commitLiveKitMessage(message);
+    }
+  }
+
+  void _commitLiveKitMessages({bool force = false}) {
+    final session = _liveKitSession;
+    if (session == null) return;
+    for (final message in session.messages) {
+      _commitLiveKitMessage(message);
+    }
+    if (mounted && state.active && !force) {
+      state = state.copyWith(userPartial: '', assistantPartial: '');
+    }
+  }
+
+  void _commitLiveKitMessage(lk.ReceivedMessage message) {
+    if (_liveKitCommitted.contains(message.id)) return;
+    final text = message.content.text.trim();
+    if (text.isEmpty) return;
+    final isUser =
+        message.content is lk.UserTranscript || message.content is lk.UserInput;
+    _ref
+        .read(chatProvider.notifier)
+        .add(
+          ChatMessage(
+            role: isUser ? ChatRole.user : ChatRole.assistant,
+            text: text,
+            viaVoice: true,
+          ),
+        );
+    _sessionTranscript.add('${isUser ? 'User' : 'Assistant'}: $text');
+    _liveKitCommitted.add(message.id);
   }
 
   Future<({String apiKey, String accessToken})> _liveCredentials() async {
@@ -689,6 +890,8 @@ class VoiceController extends StateNotifier<VoiceState> {
   void _teardown() {
     _turnFallbackTimer?.cancel();
     _turnFallbackTimer = null;
+    _liveKitCommitTimer?.cancel();
+    _liveKitCommitTimer = null;
     _ticker?.cancel();
     _ticker = null;
     _feedGeneration++;
