@@ -87,8 +87,10 @@ class VoiceController extends StateNotifier<VoiceState> {
   DateTime _lastMicVoice = DateTime.fromMillisecondsSinceEpoch(0);
   DateTime _lastOutputChunk = DateTime.fromMillisecondsSinceEpoch(0);
   Timer? _ticker;
+  Timer? _turnFallbackTimer;
   String _sessionResumptionHandle = '';
   bool _resumeInProgress = false;
+  String _lastFallbackText = '';
 
   /// Plays a short sample using the currently configured Gemini voice. This
   /// uses the same secured Live connection as a conversation, so users hear
@@ -538,9 +540,11 @@ class VoiceController extends StateNotifier<VoiceState> {
   void _onInputTranscription(String text) {
     _userText += text;
     if (state.active) state = state.copyWith(userPartial: _userText);
+    _scheduleTurnFallback();
   }
 
   void _onOutputTranscription(String text) {
+    _turnFallbackTimer?.cancel();
     _commitUserIfNeeded();
     _assistantText += text;
     if (state.active) {
@@ -549,8 +553,28 @@ class VoiceController extends StateNotifier<VoiceState> {
   }
 
   void _onTurnComplete() {
+    _turnFallbackTimer?.cancel();
     _manualInterruption = false;
     _commitTranscripts();
+  }
+
+  void _scheduleTurnFallback() {
+    _turnFallbackTimer?.cancel();
+    _turnFallbackTimer = Timer(const Duration(milliseconds: 1200), () {
+      if (!mounted || !state.active) return;
+      final text = _userText.trim();
+      if (text.isEmpty || text == _lastFallbackText) return;
+      if (_assistantText.trim().isNotEmpty) return;
+      if (DateTime.now().difference(_lastOutputChunk) <
+          const Duration(milliseconds: 1200)) {
+        return;
+      }
+      _lastFallbackText = text;
+      _client?.sendClientTurn(text);
+      if (mounted && state.phase == VoicePhase.listening) {
+        state = state.copyWith(phase: VoicePhase.thinking);
+      }
+    });
   }
 
   void _commitUserIfNeeded() {
@@ -620,6 +644,8 @@ class VoiceController extends StateNotifier<VoiceState> {
   // -------------------------------------------------------------------------
 
   void _teardown() {
+    _turnFallbackTimer?.cancel();
+    _turnFallbackTimer = null;
     _ticker?.cancel();
     _ticker = null;
     _feedGeneration++;

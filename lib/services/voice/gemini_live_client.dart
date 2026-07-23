@@ -100,6 +100,17 @@ class GeminiLiveClient {
               {'text': systemInstruction},
             ],
           },
+        'realtimeInputConfig': {
+          'automaticActivityDetection': {
+            'disabled': false,
+            'startOfSpeechSensitivity': 'START_SENSITIVITY_HIGH',
+            'endOfSpeechSensitivity': 'END_SENSITIVITY_LOW',
+            'prefixPaddingMs': 80,
+            'silenceDurationMs': 450,
+          },
+          'activityHandling': 'START_OF_ACTIVITY_INTERRUPTS',
+          'turnCoverage': 'TURN_INCLUDES_ONLY_ACTIVITY',
+        },
         'inputAudioTranscription': <String, dynamic>{},
         'outputAudioTranscription': <String, dynamic>{},
         'contextWindowCompression': {'slidingWindow': <String, dynamic>{}},
@@ -169,6 +180,27 @@ class GeminiLiveClient {
     });
   }
 
+  /// Sends a normal completed user turn. This is used as a fallback when the
+  /// Live API transcribes realtime audio but does not emit a model turn.
+  void sendClientTurn(String text) {
+    if (!isConnected) return;
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return;
+    _send({
+      'clientContent': {
+        'turns': [
+          {
+            'role': 'user',
+            'parts': [
+              {'text': trimmed},
+            ],
+          },
+        ],
+        'turnComplete': true,
+      },
+    });
+  }
+
   void sendToolResponse({
     required String id,
     required String name,
@@ -206,6 +238,9 @@ class GeminiLiveClient {
     try {
       msg = jsonDecode(text) as Map<String, dynamic>;
     } catch (_) {
+      if (frame is List<int> && frame.isNotEmpty) {
+        onAudio?.call(Uint8List.fromList(frame));
+      }
       return;
     }
 
