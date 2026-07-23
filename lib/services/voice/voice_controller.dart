@@ -78,6 +78,8 @@ class VoiceController extends StateNotifier<VoiceState> {
   bool _draining = false;
   int _feedGeneration = 0; // bumped on interruption to drop stale audio
   bool _manualInterruption = false;
+  bool _assistantActivitySeen = false;
+  bool _audioStreamEndSent = false;
 
   String _userText = '';
   String _assistantText = '';
@@ -203,6 +205,9 @@ class VoiceController extends StateNotifier<VoiceState> {
       _userText = '';
       _assistantText = '';
       _userCommitted = false;
+      _assistantActivitySeen = false;
+      _audioStreamEndSent = false;
+      _lastFallbackText = '';
       _sessionTranscript.clear();
       state = const VoiceState(phase: VoicePhase.listening);
       _startTicker();
@@ -318,7 +323,10 @@ class VoiceController extends StateNotifier<VoiceState> {
     );
     _micSub = stream.listen((chunk) {
       final level = _rms16(chunk);
-      if (level > 0.06) _lastMicVoice = DateTime.now();
+      if (level > 0.06) {
+        _lastMicVoice = DateTime.now();
+        _audioStreamEndSent = false;
+      }
       // Full-duplex speaker audio is easily picked up by the microphone on
       // phones without reliable hardware AEC. Keep listening visually, but
       // only transmit while the assistant is not speaking.
@@ -488,6 +496,8 @@ class VoiceController extends StateNotifier<VoiceState> {
   }
 
   void _onAudio(Uint8List pcm) {
+    _assistantActivitySeen = true;
+    _turnFallbackTimer?.cancel();
     _lastOutputChunk = DateTime.now();
     if (_manualInterruption) return;
     if (state.active && state.phase != VoicePhase.speaking) {
@@ -545,6 +555,7 @@ class VoiceController extends StateNotifier<VoiceState> {
 
   void _onOutputTranscription(String text) {
     _turnFallbackTimer?.cancel();
+    _assistantActivitySeen = true;
     _commitUserIfNeeded();
     _assistantText += text;
     if (state.active) {
@@ -555,6 +566,10 @@ class VoiceController extends StateNotifier<VoiceState> {
   void _onTurnComplete() {
     _turnFallbackTimer?.cancel();
     _manualInterruption = false;
+    if (_shouldFallbackToCompletedTextTurn()) {
+      _sendCompletedTextFallback();
+      return;
+    }
     _commitTranscripts();
   }
 
@@ -569,12 +584,33 @@ class VoiceController extends StateNotifier<VoiceState> {
           const Duration(milliseconds: 1200)) {
         return;
       }
-      _lastFallbackText = text;
-      _client?.sendClientTurn(text);
-      if (mounted && state.phase == VoicePhase.listening) {
-        state = state.copyWith(phase: VoicePhase.thinking);
-      }
+      _sendCompletedTextFallback();
     });
+  }
+
+  bool _shouldFallbackToCompletedTextTurn() {
+    final text = _userText.trim();
+    if (text.isEmpty || text == _lastFallbackText) return false;
+    if (_assistantActivitySeen || _assistantText.trim().isNotEmpty) {
+      return false;
+    }
+    if (DateTime.now().difference(_lastOutputChunk) <
+        const Duration(milliseconds: 800)) {
+      return false;
+    }
+    return true;
+  }
+
+  void _sendCompletedTextFallback() {
+    final text = _userText.trim();
+    if (text.isEmpty || text == _lastFallbackText) return;
+    _lastFallbackText = text;
+    _audioStreamEndSent = true;
+    _commitUserIfNeeded();
+    _client?.sendClientTurn(text);
+    if (mounted && state.active) {
+      state = state.copyWith(phase: VoicePhase.thinking);
+    }
   }
 
   void _commitUserIfNeeded() {
@@ -609,6 +645,9 @@ class VoiceController extends StateNotifier<VoiceState> {
     _userText = '';
     _assistantText = '';
     _userCommitted = false;
+    _assistantActivitySeen = false;
+    _audioStreamEndSent = false;
+    _lastFallbackText = '';
     if (mounted && state.active && !force) {
       state = state.copyWith(userPartial: '', assistantPartial: '');
     }
@@ -634,6 +673,10 @@ class VoiceController extends StateNotifier<VoiceState> {
           _userText.trim().isNotEmpty &&
           sinceVoice > 900 &&
           _assistantText.isEmpty) {
+        if (!_audioStreamEndSent) {
+          _audioStreamEndSent = true;
+          _client?.sendAudioStreamEnd();
+        }
         state = state.copyWith(phase: VoicePhase.thinking);
       } else if (state.phase == VoicePhase.thinking && sinceVoice < 300) {
         state = state.copyWith(phase: VoicePhase.listening);
@@ -651,6 +694,7 @@ class VoiceController extends StateNotifier<VoiceState> {
     _feedGeneration++;
     _resumeInProgress = false;
     _manualInterruption = false;
+    _audioStreamEndSent = false;
     _sessionResumptionHandle = '';
     _playQueue.clear();
     _micSub?.cancel();
@@ -658,6 +702,8 @@ class VoiceController extends StateNotifier<VoiceState> {
     unawaited(_recorder.stop().catchError((_) => null));
     final client = _client;
     _client = null;
+    _assistantActivitySeen = false;
+    _lastFallbackText = '';
     unawaited(client?.close());
     if (_playerReady) {
       _playerReady = false;

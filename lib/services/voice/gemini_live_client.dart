@@ -161,6 +161,16 @@ class GeminiLiveClient {
     });
   }
 
+  /// Tells Gemini that the current microphone stream ended. With automatic
+  /// activity detection enabled this helps mobile devices whose recorder stops
+  /// yielding useful silence after the user finishes speaking.
+  void sendAudioStreamEnd() {
+    if (!isConnected) return;
+    _send({
+      'realtimeInput': {'audioStreamEnd': true},
+    });
+  }
+
   /// Sends one JPEG camera frame. Gemini Live accepts at most one frame per
   /// second; the caller owns that throttle.
   void sendVideoFrame(Uint8List jpeg) {
