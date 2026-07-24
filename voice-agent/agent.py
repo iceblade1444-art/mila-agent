@@ -63,7 +63,7 @@ async def mila_session(ctx: JobContext):
     model = (
         os.getenv("MILA_LIVE_MODEL")
         or os.getenv("GEMINI_LIVE_MODEL")
-        or "gemini-2.5-flash-native-audio-preview-12-2025"
+        or "gemini-3.1-flash-live-preview"
     )
     affective_dialog = env_flag("MILA_AFFECTIVE_DIALOG", True)
     if "3.1" in model:

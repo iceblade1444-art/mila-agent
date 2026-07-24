@@ -112,7 +112,7 @@ updates the local MILA profile; provider API keys remain separate.
 
 | Purpose | Default |
 |---|---|
-| Server voice (LiveKit + affective Gemini Live) | `gemini-2.5-flash-native-audio-preview-12-2025` |
+| Server voice (LiveKit + Gemini Native Audio) | `gemini-3.1-flash-live-preview` |
 | Direct mobile fallback | `gemini-3.1-flash-live-preview` |
 | Gemini text | `gemini-3.5-flash` |
 
@@ -124,14 +124,15 @@ preserving Russian, Uzbek, English, and mixed speech. Production overrides are
 read from `backend/.env`:
 
 ```dotenv
-MILA_LIVE_MODEL=gemini-2.5-flash-native-audio-preview-12-2025
+GEMINI_LIVE_MODEL=gemini-3.1-flash-live-preview
 MILA_VOICE=Aoede
 MILA_AFFECTIVE_DIALOG=true
 MILA_VOICE_TEMPERATURE=0.8
 GEMINI_API_VERSION=v1alpha
 ```
 
-Gemini 3.1 Live can still be selected through `MILA_LIVE_MODEL`, but MILA
+The server maps `GEMINI_LIVE_MODEL` to the LiveKit voice worker so the mobile
+app, dashboard status, and actual runtime use the same model. MILA
 automatically disables affective dialogue for 3.1 because that model does not
 support the capability.
 
