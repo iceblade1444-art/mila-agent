@@ -548,7 +548,7 @@ test('LiveKit token uses the paired account and a private one-time room', async 
       assert.equal(response.status, 201);
       const payload = await response.json();
       assert.equal(payload.server_url, 'wss://voice.example.test/rtc');
-      assert.match(payload.room_name, /^mila-[0-9a-f-]{36}$/);
+      assert.match(payload.room_name, /^mila-uz-UZ-[0-9a-f-]{36}$/);
       assert.equal(payload.language, 'uz-UZ');
 
       const claims = await new TokenVerifier(
@@ -564,6 +564,7 @@ test('LiveKit token uses the paired account and a private one-time room', async 
         JSON.parse(claims.metadata).owner.email,
         'creator@example.test',
       );
+      assert.equal(JSON.parse(claims.metadata).language, 'uz-UZ');
     },
   );
 });
