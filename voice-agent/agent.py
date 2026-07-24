@@ -1,6 +1,7 @@
 import json
 import os
 
+from google.genai import types
 from livekit import agents
 from livekit.agents import Agent, AgentServer, AgentSession, JobContext, RoomInputOptions
 
@@ -26,6 +27,11 @@ Ask for confirmation before actions that change files, settings, accounts,
 money, or external systems. If an action requires Agentic OS or Hermes and no
 tool is available in the current call, clearly say what must be confirmed in
 the app. Never claim that an action succeeded unless a tool confirmed it.
+
+React only to clear human speech. Ignore silence, breathing, keyboard sounds,
+speaker echo, background audio, isolated punctuation, and transcripts such as
+"<noise>". Never guess a sentence from an unclear sound. If a phrase is too
+unclear to understand, wait quietly for the user to speak again.
 """.strip()
 
 LANGUAGE_HINTS = {
@@ -98,6 +104,17 @@ async def mila_session(ctx: JobContext):
         "temperature": float(os.getenv("MILA_VOICE_TEMPERATURE", "0.8")),
         "enable_affective_dialog": affective_dialog,
         "proactivity": False,
+        "realtime_input_config": types.RealtimeInputConfig(
+            automatic_activity_detection=types.AutomaticActivityDetection(
+                disabled=False,
+                start_of_speech_sensitivity=types.StartSensitivity.START_SENSITIVITY_LOW,
+                end_of_speech_sensitivity=types.EndSensitivity.END_SENSITIVITY_HIGH,
+                prefix_padding_ms=160,
+                silence_duration_ms=750,
+            ),
+            activity_handling=types.ActivityHandling.START_OF_ACTIVITY_INTERRUPTS,
+            turn_coverage=types.TurnCoverage.TURN_INCLUDES_ONLY_ACTIVITY,
+        ),
         "api_version": os.getenv("GEMINI_API_VERSION", "v1alpha"),
     }
     if language != "auto":
