@@ -7,6 +7,7 @@ import '../../core/theme/mila_theme.dart';
 import '../../core/widgets/common.dart';
 import '../../core/widgets/voice_orb.dart';
 import '../../data/models.dart';
+import '../../services/agentic/agentic_os_service.dart';
 import '../../services/soul/soul_service.dart';
 import '../../services/storage/stores.dart';
 
@@ -49,7 +50,7 @@ class _AssistantSetupScreenState extends ConsumerState<AssistantSetupScreen> {
     super.dispose();
   }
 
-  void _finish() {
+  Future<void> _finish() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
     final profile = ref.read(profileProvider);
@@ -71,12 +72,21 @@ class _AssistantSetupScreenState extends ConsumerState<AssistantSetupScreen> {
         );
     ref.read(profileProvider.notifier).save(updatedProfile);
     ref.read(settingsProvider.notifier).update((_) => updatedSettings);
-    ref.read(soulServiceProvider).save(updatedSettings, updatedProfile);
+    await ref.read(soulServiceProvider).save(updatedSettings, updatedProfile);
+    if (!mounted) return;
 
     if (!profile.signedIn) {
       context.go('/signin');
       return;
     }
+    try {
+      await ref
+          .read(agenticOsServiceProvider)
+          .syncPersonalOnboarding(updatedSettings);
+    } on AgenticOsException {
+      // The local setup remains usable; the next authenticated sync retries it.
+    }
+    if (!mounted) return;
     context.go(
       ref.read(settingsProvider).permissionsDone ? '/home' : '/permissions',
     );
@@ -289,7 +299,7 @@ class _AssistantSetupScreenState extends ConsumerState<AssistantSetupScreen> {
                       uz: 'Davom etish',
                     ),
                     icon: Icons.arrow_forward_rounded,
-                    onPressed: _finish,
+                    onPressed: () => _finish(),
                   ),
                 ),
               ],

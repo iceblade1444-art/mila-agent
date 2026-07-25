@@ -551,6 +551,7 @@ class SettingsScreen extends ConsumerWidget {
                 unawaited(ref.read(googleAuthServiceProvider).signOut());
                 final secure = ref.read(secureStoreProvider);
                 await secure.write(SecureStore.agenticOsAccessToken, '');
+                await secure.write(SecureStore.agenticOsAccountRole, '');
                 await secure.write(SecureStore.openAiAccountToken, '');
                 await secure.write(SecureStore.openAiAccountLabel, '');
                 ref.read(profileProvider.notifier).signOut();

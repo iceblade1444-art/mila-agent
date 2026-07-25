@@ -50,6 +50,42 @@ class AgenticOsService {
     return token.isNotEmpty;
   }
 
+  Future<void> syncPersonalOnboarding(AppSettings settings) async {
+    final secure = _ref.read(secureStoreProvider);
+    final role =
+        await secure.read(SecureStore.agenticOsAccountRole) ?? 'Member';
+    if (role == 'Creator' || role == 'Admin') {
+      await _request('POST', '/api/onboarding/sync-context');
+      return;
+    }
+    final language = settings.language.toLowerCase();
+    final locale = language.contains('english')
+        ? 'en-US'
+        : language.contains('uzbek') ||
+              language.contains('o‘zbek') ||
+              language.contains("o'zbek")
+        ? 'uz-UZ'
+        : 'ru-RU';
+    final assistantStyle = switch (settings.personalityId) {
+      'professional' => 'operator',
+      'playful' || 'warm' => 'friend',
+      _ => 'assistant',
+    };
+    await _request(
+      'PUT',
+      '/api/onboarding',
+      body: {
+        'profile': {
+          'locale': locale,
+          'timezone': 'Asia/Tashkent',
+          'roleFocus': 'MILA mobile user',
+          'assistantStyle': assistantStyle,
+          'responseLength': settings.conciseSummaries ? 'brief' : 'balanced',
+        },
+      },
+    );
+  }
+
   Future<AgenticDashboard> dashboard({http.Client? client}) async {
     final json = await _request('GET', '/api/member/dashboard', client: client);
     return AgenticDashboard.fromJson(json);

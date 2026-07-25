@@ -156,6 +156,7 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
     await secure.write(SecureStore.openAiAccountToken, '');
     await secure.write(SecureStore.openAiAccountLabel, '');
     await secure.write(SecureStore.agenticOsAccessToken, '');
+    await secure.write(SecureStore.agenticOsAccountRole, '');
     await ref.read(agenticTasksProvider.notifier).refresh();
     if (mounted) setState(() => _accountLabel = '');
   }

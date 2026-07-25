@@ -10,6 +10,7 @@ import '../../core/widgets/common.dart';
 import '../../core/widgets/voice_orb.dart';
 import '../../data/models.dart';
 import '../../services/auth/mila_account_service.dart';
+import '../../services/agentic/agentic_os_service.dart';
 import '../../services/soul/soul_service.dart';
 import '../../services/storage/stores.dart';
 
@@ -64,6 +65,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         SecureStore.agenticOsAccessToken,
         session.accountToken,
       );
+      await secure.write(SecureStore.agenticOsAccountRole, session.ownerRole);
       await secure.write(SecureStore.openAiAccountToken, session.token);
       await secure.write(SecureStore.openAiAccountLabel, session.label);
       final profile = UserProfile(
@@ -75,6 +77,13 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
       await ref
           .read(soulServiceProvider)
           .save(ref.read(settingsProvider), profile);
+      try {
+        await ref
+            .read(agenticOsServiceProvider)
+            .syncPersonalOnboarding(ref.read(settingsProvider));
+      } on AgenticOsException {
+        // Authentication succeeded; a later profile sync can retry SOUL.md.
+      }
       if (!mounted) return;
       context.go(
         ref.read(settingsProvider).assistantSetupDone
