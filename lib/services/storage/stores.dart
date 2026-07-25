@@ -64,6 +64,7 @@ class SecureStore {
   static const milaBackendUrl = 'mila_backend_url';
   static const openAiAccountToken = 'openai_account_token';
   static const openAiAccountLabel = 'openai_account_label';
+  static const agenticOsAccessToken = 'agentic_os_access_token';
   static const geminiKey = 'gemini_api_key';
   static const anthropicKey = 'anthropic_api_key';
   static const integrationConfigs = 'integration_configs';

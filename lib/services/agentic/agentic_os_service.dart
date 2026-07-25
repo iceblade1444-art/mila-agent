@@ -22,12 +22,21 @@ class AgenticOsService {
 
   Future<({String baseUrl, String token})> _credentials() async {
     final secure = _ref.read(secureStoreProvider);
-    final baseUrl = AppConfig.configuredBackendUrl(
+    final milaUrl = AppConfig.configuredBackendUrl(
       await secure.read(SecureStore.milaBackendUrl),
     ).replaceFirst(RegExp(r'/$'), '');
-    final token = await secure.read(SecureStore.openAiAccountToken) ?? '';
+    final uri = Uri.parse(milaUrl);
+    final baseUrl = uri
+        .replace(
+          path: uri.path.replaceFirst(RegExp(r'/mila$'), ''),
+          query: null,
+          fragment: null,
+        )
+        .toString()
+        .replaceFirst(RegExp(r'/$'), '');
+    final token = await secure.read(SecureStore.agenticOsAccessToken) ?? '';
     if (baseUrl.isEmpty || token.isEmpty) {
-      throw const AgenticOsException('Connect MILA to Agentic OS first.');
+      throw const AgenticOsException('Sign in to Agentic OS first.');
     }
     return (baseUrl: baseUrl, token: token);
   }
@@ -36,19 +45,19 @@ class AgenticOsService {
     final token =
         await _ref
             .read(secureStoreProvider)
-            .read(SecureStore.openAiAccountToken) ??
+            .read(SecureStore.agenticOsAccessToken) ??
         '';
     return token.isNotEmpty;
   }
 
   Future<AgenticDashboard> dashboard({http.Client? client}) async {
-    final json = await _request('GET', '/v1/dashboard', client: client);
+    final json = await _request('GET', '/api/member/dashboard', client: client);
     return AgenticDashboard.fromJson(json);
   }
 
   Future<List<AgenticTask>> listTasks({http.Client? client}) async {
-    final json = await _request('GET', '/v1/tasks', client: client);
-    return ((json['tasks'] as List?) ?? const [])
+    final json = await _requestList('/api/member/tasks', client: client);
+    return json
         .map(
           (item) => AgenticTask.fromJson((item as Map).cast<String, dynamic>()),
         )
@@ -64,19 +73,20 @@ class AgenticOsService {
   }) async {
     final json = await _request(
       'POST',
-      '/v1/tasks',
+      '/api/member/tasks',
       body: {
         'title': title,
-        'body': body,
-        'priority': priority,
-        'initialStatus': 'triage',
-        'assignee': 'default',
+        'detail': body,
+        'priority': switch (priority) {
+          >= 2 => 'high',
+          <= -1 => 'low',
+          _ => 'normal',
+        },
+        'status': 'todo',
       },
       client: client,
     );
-    return AgenticTask.fromJson(
-      ((json['task'] as Map?) ?? const {}).cast<String, dynamic>(),
-    );
+    return AgenticTask.fromJson(json);
   }
 
   Future<void> updateTask(
@@ -87,28 +97,24 @@ class AgenticOsService {
   }) async {
     await _request(
       'PATCH',
-      '/v1/tasks/${Uri.encodeComponent(id)}',
+      '/api/member/tasks/${Uri.encodeComponent(id)}',
       body: {
-        'status': status,
-        if (blockReason.isNotEmpty) 'blockReason': blockReason,
+        'status': status == 'done' ? 'done' : 'doing',
+        if (blockReason.isNotEmpty) 'detail': blockReason,
       },
       client: client,
     );
   }
 
   Future<List<MemoryItem>> listMemory({http.Client? client}) async {
-    final json = await _request('GET', '/v1/memory', client: client);
-    return ((json['items'] as List?) ?? const [])
+    final json = await _requestList('/api/member/notes', client: client);
+    return json
         .map((value) {
           final item = (value as Map).cast<String, dynamic>();
           return MemoryItem(
             id: item['id'] as String?,
-            text: item['text'] as String? ?? '',
-            category: switch (item['category']) {
-              'people' => MemoryCategory.people,
-              'preferences' => MemoryCategory.preferences,
-              _ => MemoryCategory.facts,
-            },
+            text: item['content'] as String? ?? '',
+            category: MemoryCategory.facts,
           );
         })
         .where((item) => item.text.isNotEmpty)
@@ -119,28 +125,25 @@ class AgenticOsService {
     MemoryItem item, {
     http.Client? client,
   }) async {
+    final words = item.text.trim().split(RegExp(r'\s+')).take(8).join(' ');
+    final title = words.length >= 2 ? words : 'MILA note';
     final json = await _request(
       'POST',
-      '/v1/memory',
-      body: {'text': item.text, 'category': item.category.name},
+      '/api/member/notes',
+      body: {'title': title, 'content': item.text},
       client: client,
     );
-    final saved = ((json['item'] as Map?) ?? const {}).cast<String, dynamic>();
     return MemoryItem(
-      id: saved['id'] as String?,
-      text: saved['text'] as String? ?? item.text,
-      category: switch (saved['category']) {
-        'people' => MemoryCategory.people,
-        'preferences' => MemoryCategory.preferences,
-        _ => MemoryCategory.facts,
-      },
+      id: json['id'] as String?,
+      text: json['content'] as String? ?? item.text,
+      category: item.category,
     );
   }
 
   Future<void> deleteMemory(String id, {http.Client? client}) async {
     await _request(
       'DELETE',
-      '/v1/memory/${Uri.encodeComponent(id)}',
+      '/api/member/notes/${Uri.encodeComponent(id)}',
       client: client,
     );
   }
@@ -178,6 +181,41 @@ class AgenticOsService {
         );
       }
       return json;
+    } on AgenticOsException {
+      rethrow;
+    } catch (_) {
+      throw const AgenticOsException(
+        'Could not reach Agentic OS. Check the server connection.',
+      );
+    } finally {
+      if (shouldClose) httpClient.close();
+    }
+  }
+
+  Future<List<dynamic>> _requestList(String path, {http.Client? client}) async {
+    final credentials = await _credentials();
+    final httpClient = client ?? http.Client();
+    final shouldClose = client == null;
+    try {
+      final response = await httpClient
+          .get(
+            Uri.parse('${credentials.baseUrl}$path'),
+            headers: {'Authorization': 'Bearer ${credentials.token}'},
+          )
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode == 401) {
+        throw const AgenticOsException(
+          'Agentic OS session expired. Sign in again.',
+        );
+      }
+      final decoded = jsonDecode(response.body);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final error = decoded is Map ? decoded['error'] : null;
+        throw AgenticOsException(
+          error is String ? error : 'Agentic OS request failed.',
+        );
+      }
+      return decoded is List ? decoded : const [];
     } on AgenticOsException {
       rethrow;
     } catch (_) {
@@ -238,34 +276,26 @@ class AgenticDashboard {
   factory AgenticDashboard.fromJson(Map<String, dynamic> json) {
     final account = ((json['account'] as Map?) ?? const {})
         .cast<String, dynamic>();
-    final owner = ((account['owner'] as Map?) ?? const {})
+    final counts = ((json['counts'] as Map?) ?? const {})
         .cast<String, dynamic>();
-    final workspace = ((json['workspace'] as Map?) ?? const {})
-        .cast<String, dynamic>();
-    final tasks = ((json['tasks'] as Map?) ?? const {}).cast<String, dynamic>();
-    final knowledge = ((json['knowledge'] as Map?) ?? const {})
-        .cast<String, dynamic>();
-    final mila = ((json['mila'] as Map?) ?? const {}).cast<String, dynamic>();
-    final synced = json['syncedAt'];
+    final synced = json['updatedAt'];
     return AgenticDashboard(
-      connected: json['connected'] == true,
-      accountLabel: account['label'] as String? ?? '',
-      ownerName: owner['name'] as String? ?? '',
-      ownerEmail: owner['email'] as String? ?? '',
-      workspaceName: workspace['name'] as String? ?? 'Agentic OS',
-      readiness: workspace['readiness'] as String? ?? 'unknown',
-      readinessScore: (workspace['readinessScore'] as num?)?.toInt() ?? 0,
-      openTasks: (tasks['open'] as num?)?.toInt() ?? 0,
-      runningTasks: (tasks['running'] as num?)?.toInt() ?? 0,
-      blockedTasks: (tasks['blocked'] as num?)?.toInt() ?? 0,
-      knowledgeNotes: (knowledge['notes'] as num?)?.toInt() ?? 0,
-      knowledgeFolders: (knowledge['folders'] as num?)?.toInt() ?? 0,
-      obsidianMcpStatus: knowledge['mcpStatus'] as String? ?? 'unknown',
-      milaVoiceConfigured: mila['voiceConfigured'] == true,
-      liveModel: mila['liveModel'] as String? ?? '',
-      syncedAt: synced is num
-          ? DateTime.fromMillisecondsSinceEpoch(synced.toInt())
-          : null,
+      connected: true,
+      accountLabel: account['email'] as String? ?? '',
+      ownerName: account['name'] as String? ?? '',
+      ownerEmail: account['email'] as String? ?? '',
+      workspaceName: 'Personal workspace',
+      readiness: 'ready',
+      readinessScore: 100,
+      openTasks: (counts['open'] as num?)?.toInt() ?? 0,
+      runningTasks: (counts['doing'] as num?)?.toInt() ?? 0,
+      blockedTasks: 0,
+      knowledgeNotes: (counts['notes'] as num?)?.toInt() ?? 0,
+      knowledgeFolders: 0,
+      obsidianMcpStatus: 'personal',
+      milaVoiceConfigured: true,
+      liveModel: 'gemini-3.1-flash-live-preview',
+      syncedAt: DateTime.tryParse(synced?.toString() ?? ''),
     );
   }
 }

@@ -5,7 +5,7 @@ import path from 'node:path';
 import {test} from 'node:test';
 import {TokenVerifier} from 'livekit-server-sdk';
 
-import {createMilaServer} from '../server.mjs';
+import {createMilaServer, normalizeLiveProfile} from '../server.mjs';
 
 async function withServer(options, run) {
   const merged = {
@@ -136,6 +136,48 @@ test('Agentic OS connection code unifies the mobile session owner', async () => 
       });
     },
   );
+});
+
+test('authenticated Agentic OS account creates a private MILA voice session', async () => {
+  const calls = [];
+  await withServer(
+    {
+      config: {agenticOsUrl: 'http://agentic-os.internal:8787'},
+      fetchImpl: async (url, request = {}) => {
+        calls.push({url, request});
+        return Response.json({
+          authed: true,
+          user: {
+            id: 'usr_mobile',
+            email: 'mobile@example.com',
+            name: 'Mobile Member',
+            role: 'Member',
+          },
+        });
+      },
+    },
+    async (baseUrl) => {
+      const denied = await fetch(`${baseUrl}/v1/auth/agentic`, {method: 'POST'});
+      assert.equal(denied.status, 401);
+
+      const response = await fetch(`${baseUrl}/v1/auth/agentic`, {
+        method: 'POST',
+        headers: {Authorization: 'Bearer account-token'},
+      });
+      assert.equal(response.status, 201);
+      const session = await response.json();
+      assert.ok(session.token.length > 20);
+      assert.equal(session.label, 'mobile@example.com');
+      assert.deepEqual(session.owner, {
+        id: 'usr_mobile',
+        email: 'mobile@example.com',
+        name: 'Mobile Member',
+        role: 'Member',
+      });
+    },
+  );
+  assert.equal(calls[0].url, 'http://agentic-os.internal:8787/api/auth/me');
+  assert.equal(calls[0].request.headers.Authorization, 'Bearer account-token');
 });
 
 test('admin can list and revoke a specific mobile device without exposing tokens', async () => {
@@ -543,7 +585,18 @@ test('LiveKit token uses the paired account and a private one-time room', async 
           Authorization: `Bearer ${session.token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({language: 'uz-UZ'}),
+        body: JSON.stringify({
+          language: 'uz-UZ',
+          profile: {
+            voiceName: 'Sulafat',
+            additionalInstructions: 'Speak warmly.',
+            thinkingLevel: 'medium',
+            mediaResolution: 'high',
+            contextTriggerTokens: 90000,
+            contextTargetTokens: 70000,
+            functionCalling: false,
+          },
+        }),
       });
       assert.equal(response.status, 201);
       const payload = await response.json();
@@ -564,8 +617,39 @@ test('LiveKit token uses the paired account and a private one-time room', async 
         JSON.parse(claims.metadata).owner.email,
         'creator@example.test',
       );
+      assert.deepEqual(JSON.parse(claims.roomConfig.metadata), {
+        language: 'uz-UZ',
+        profile: {
+          voiceName: 'Sulafat',
+          additionalInstructions: 'Speak warmly.',
+          thinkingLevel: 'medium',
+          mediaResolution: 'high',
+          contextTriggerTokens: 90000,
+          contextTargetTokens: 70000,
+          functionCalling: false,
+        },
+        source: 'agentic-os',
+      });
     },
   );
+});
+
+test('Live profile rejects unknown values and keeps context compression valid', () => {
+  assert.deepEqual(normalizeLiveProfile({
+    voiceName: 'unknown',
+    thinkingLevel: 'extreme',
+    mediaResolution: 'huge',
+    contextTriggerTokens: 100,
+    contextTargetTokens: 999999,
+  }), {
+    voiceName: 'Laomedeia',
+    additionalInstructions: '',
+    thinkingLevel: 'low',
+    mediaResolution: 'low',
+    contextTriggerTokens: 65536,
+    contextTargetTokens: 57344,
+    functionCalling: true,
+  });
 });
 
 test('chat stream proxies OpenAI SSE after connection', async () => {

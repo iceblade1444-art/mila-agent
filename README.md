@@ -9,7 +9,7 @@ currently disabled.
 
 | Screen (design #) | Status |
 |---|---|
-| Splash, Onboarding, Sign In, Permissions (01–04) | ✅ local profile + Google OAuth-ready |
+| Splash, Onboarding, Sign In, Permissions (01–04) | ✅ unified Agentic OS account |
 | Living orb: animated listening/thinking/speaking/error states | ✅ lightweight CustomPainter, audio-reactive |
 | Home Dashboard + suggestions (05) | ✅ |
 | Voice assistant: idle / listening / thinking / speaking (06–09) | ✅ Gemini Live, acoustic echo protection, live camera vision |
@@ -35,11 +35,11 @@ lib/
   features/        one folder per screen, Riverpod state, go_router navigation
 ```
 
-When paired with Agentic OS, MILA uses the backend as a narrow security proxy:
-the phone holds a revocable MILA session, while the Agentic OS token and Gemini
-key remain server-side. Approved text tasks and voice proposals enter Hermes
-Kanban in `triage`; task status, assignee and handoff summaries sync back to the
-Tasks screen. See `docs/AGENTIC_OS_SYNC_RU.md` for the full contract.
+MILA and the web panel use the same Agentic OS account, role and personal
+workspace. The phone holds a revocable account token plus a separate MILA voice
+session, while Gemini and LiveKit secrets remain server-side. Personal tasks
+and notes synchronize through `/api/member/*`. See
+`docs/UNIFIED_ACCOUNTS_RU.md` and `docs/AGENTIC_OS_SYNC_RU.md`.
 
 Adding another LLM vendor = one new `LlmProvider` subclass and a settings entry.
 
@@ -73,8 +73,9 @@ In the app: **Settings → AI Providers**:
   [Google AI Studio](https://aistudio.google.com/apikey)
 - **MILA server URL** — your backend domain, for example
   `https://agent.milanapremium.uz/mila`, used for secure voice sessions,
-  updates and downloads. Agentic OS issues the one-time mobile connection code
-  from **Integrations → MILA Voice**.
+  updates and downloads. New users register or sign in with the same email and
+  password used by the Agentic OS web panel. The one-time connection code is
+  retained only for older installed builds and administrative compatibility.
 
 Keys are stored in the Android Keystore / iOS Keychain.
 You can bake Gemini defaults in at build time (secure storage still overrides
@@ -89,14 +90,9 @@ flutter build apk --release \
 
 ### Google Sign-In
 
-Create an Android OAuth client for package `app.milaai.mila` (with the SHA-1
-of the signing key) and a Web OAuth client in the same Google Cloud project.
-Then provide the Web client ID at build or run time:
-
-```powershell
-flutter run --dart-define=GOOGLE_WEB_CLIENT_ID=123456.apps.googleusercontent.com
-flutter build apk --release --dart-define=GOOGLE_WEB_CLIENT_ID=123456.apps.googleusercontent.com
-```
+Google Sign-In is hidden until the server-side OAuth flow is connected to the
+same Agentic OS user store. This prevents a local-only account from appearing
+signed in without a real server identity.
 
 The client ID is public configuration, not a client secret. A Google account
 updates the local MILA profile; provider API keys remain separate.

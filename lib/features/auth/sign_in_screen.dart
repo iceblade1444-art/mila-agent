@@ -9,12 +9,11 @@ import '../../core/theme/mila_theme.dart';
 import '../../core/widgets/common.dart';
 import '../../core/widgets/voice_orb.dart';
 import '../../data/models.dart';
-import '../../services/auth/google_auth_service.dart';
+import '../../services/auth/mila_account_service.dart';
 import '../../services/soul/soul_service.dart';
 import '../../services/storage/stores.dart';
 
-/// Local account screen. MILA keeps all data on-device; if you later add a
-/// backend, wire this form to it and keep the same profile store contract.
+/// Uses the same Agentic OS account as the web application.
 class SignInScreen extends ConsumerStatefulWidget {
   const SignInScreen({super.key});
 
@@ -29,7 +28,6 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   final _formKey = GlobalKey<FormState>();
   bool _creating = false;
   bool _localBusy = false;
-  bool _googleBusy = false;
 
   @override
   void dispose() {
@@ -43,40 +41,34 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     if (_localBusy) return;
     if (!(_formKey.currentState?.validate() ?? false)) return;
     setState(() => _localBusy = true);
-    final email = _email.text.trim();
-    final existing = ref.read(profileProvider);
-    // Keep the name chosen during first-run setup.
-    var name = _name.text.trim();
-    if (existing.name.isNotEmpty) name = existing.name;
-    if (name.isEmpty) {
-      final prefix = email.split('@').first;
-      name = prefix[0].toUpperCase() + prefix.substring(1);
-    }
-    ref
-        .read(profileProvider.notifier)
-        .save(UserProfile(name: name, email: email, signedIn: true));
-    await ref
-        .read(soulServiceProvider)
-        .save(ref.read(settingsProvider), ref.read(profileProvider));
-    if (!mounted) return;
-    context.go(
-      ref.read(settingsProvider).assistantSetupDone
-          ? '/permissions'
-          : '/assistant-setup',
-    );
-  }
-
-  Future<void> _signInWithGoogle() async {
-    if (_googleBusy) return;
-    setState(() => _googleBusy = true);
     try {
-      final account = await ref.read(googleAuthServiceProvider).signIn();
-      final existing = ref.read(profileProvider);
+      final secure = ref.read(secureStoreProvider);
+      final baseUrl =
+          await secure.read(SecureStore.milaBackendUrl) ??
+          'https://agent.milanapremium.uz/mila';
+      final service = const MilaAccountService();
+      final session = _creating
+          ? await service.register(
+              baseUrl: baseUrl,
+              name: _name.text,
+              email: _email.text,
+              password: _password.text,
+            )
+          : await service.signIn(
+              baseUrl: baseUrl,
+              email: _email.text,
+              password: _password.text,
+            );
+      await secure.write(SecureStore.milaBackendUrl, baseUrl);
+      await secure.write(
+        SecureStore.agenticOsAccessToken,
+        session.accountToken,
+      );
+      await secure.write(SecureStore.openAiAccountToken, session.token);
+      await secure.write(SecureStore.openAiAccountLabel, session.label);
       final profile = UserProfile(
-        name: existing.name.isNotEmpty
-            ? existing.name
-            : (account.displayName ?? account.email.split('@').first),
-        email: account.email,
+        name: session.ownerName,
+        email: session.ownerEmail,
         signedIn: true,
       );
       ref.read(profileProvider.notifier).save(profile);
@@ -89,14 +81,15 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
             ? '/permissions'
             : '/assistant-setup',
       );
-    } on GoogleAuthException catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(error.message)));
-      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('FormatException: ', '')),
+        ),
+      );
     } finally {
-      if (mounted) setState(() => _googleBusy = false);
+      if (mounted) setState(() => _localBusy = false);
     }
   }
 
@@ -104,7 +97,6 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final l10n = context.l10n;
-    const googleConfigured = GoogleAuthService.isConfigured;
     return Scaffold(
       body: MilaBackground(
         child: SafeArea(
@@ -139,9 +131,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                     child: Text(
                       _creating
                           ? l10n.pick(
-                              ru: 'Настройте локальный профиль MILA',
-                              en: 'Set up your local MILA profile',
-                              uz: 'Mahalliy MILA profilingizni sozlang',
+                              ru: 'Один аккаунт для телефона и Agentic OS',
+                              en: 'One account for mobile and Agentic OS',
+                              uz: 'Telefon va Agentic OS uchun bitta akkaunt',
                             )
                           : l10n.pick(
                               ru: 'Войдите, чтобы продолжить',
@@ -204,36 +196,21 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                           ),
                   ),
                   const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        l10n.pick(ru: 'Пароль', en: 'Password', uz: 'Parol'),
-                        style: text.labelMedium,
-                      ),
-                      Text(
-                        l10n.pick(
-                          ru: 'Забыли?',
-                          en: 'Forgot?',
-                          uz: 'Unutdingizmi?',
-                        ),
-                        style: text.labelMedium?.copyWith(
-                          color: MilaColors.cyan,
-                        ),
-                      ),
-                    ],
+                  Text(
+                    l10n.pick(ru: 'Пароль', en: 'Password', uz: 'Parol'),
+                    style: text.labelMedium,
                   ),
                   const SizedBox(height: 8),
                   TextFormField(
                     controller: _password,
                     obscureText: true,
                     decoration: const InputDecoration(hintText: '••••••••••'),
-                    validator: (v) => (v ?? '').length >= 6
+                    validator: (v) => (v ?? '').length >= 10
                         ? null
                         : l10n.pick(
-                            ru: 'Минимум 6 символов',
-                            en: 'At least 6 characters',
-                            uz: 'Kamida 6 belgi',
+                            ru: 'Минимум 10 символов',
+                            en: 'At least 10 characters',
+                            uz: 'Kamida 10 belgi',
                           ),
                   ),
                   const SizedBox(height: 28),
@@ -248,42 +225,6 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                     busy: _localBusy,
                     onPressed: _localBusy ? null : () => unawaited(_submit()),
                   ),
-                  if (googleConfigured) ...[
-                    const SizedBox(height: 28),
-                    Row(
-                      children: [
-                        const Expanded(child: Divider()),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          child: Text(
-                            l10n.pick(
-                              ru: 'или продолжить через',
-                              en: 'or continue with',
-                              uz: 'yoki davom etish',
-                            ),
-                            style: text.labelSmall,
-                          ),
-                        ),
-                        const Expanded(child: Divider()),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    GhostButton(
-                      label: _googleBusy
-                          ? l10n.pick(
-                              ru: 'Подключаю Google...',
-                              en: 'Connecting to Google...',
-                              uz: 'Google ulanmoqda...',
-                            )
-                          : l10n.pick(
-                              ru: 'Продолжить с Google',
-                              en: 'Continue with Google',
-                              uz: 'Google orqali davom etish',
-                            ),
-                      icon: Icons.g_mobiledata_rounded,
-                      onPressed: _googleBusy ? null : _signInWithGoogle,
-                    ),
-                  ],
                   const SizedBox(height: 32),
                   Center(
                     child: GestureDetector(

@@ -21,16 +21,23 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    Timer(const Duration(milliseconds: 1900), _next);
+    Timer(const Duration(milliseconds: 1900), () => unawaited(_next()));
   }
 
-  void _next() {
+  Future<void> _next() async {
     if (!mounted) return;
     final settings = ref.read(settingsProvider);
     final profile = ref.read(profileProvider);
+    final accountToken =
+        await ref
+            .read(secureStoreProvider)
+            .read(SecureStore.agenticOsAccessToken) ??
+        '';
+    if (!mounted) return;
     if (!settings.onboarded) {
       context.go('/onboarding');
-    } else if (!profile.signedIn) {
+    } else if (!profile.signedIn || accountToken.isEmpty) {
+      if (profile.signedIn) ref.read(profileProvider.notifier).signOut();
       context.go('/signin');
     } else if (!settings.assistantSetupDone) {
       context.go('/assistant-setup');

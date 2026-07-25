@@ -223,19 +223,27 @@ class AgenticTask {
   final DateTime? createdAt;
 
   bool get complete => status == 'done' || status == 'archived';
-  bool get active => status == 'ready' || status == 'running';
+  bool get active =>
+      status == 'ready' || status == 'running' || status == 'doing';
 
   factory AgenticTask.fromJson(Map<String, dynamic> json) {
-    final created = json['created_at'];
+    final created = json['created_at'] ?? json['createdAt'];
+    final priority = json['priority'];
     return AgenticTask(
       id: json['id'] as String? ?? '',
       title: json['title'] as String? ?? 'Untitled task',
-      body: json['body'] as String? ?? '',
-      status: json['status'] as String? ?? 'triage',
+      body: json['body'] as String? ?? json['detail'] as String? ?? '',
+      status: json['status'] as String? ?? 'todo',
       assignee: json['assignee'] as String? ?? 'default',
       summary:
           json['latest_summary'] as String? ?? json['result'] as String? ?? '',
-      priority: (json['priority'] as num?)?.toInt() ?? 0,
+      priority: priority is num
+          ? priority.toInt()
+          : switch (priority) {
+              'high' => 2,
+              'low' => -1,
+              _ => 0,
+            },
       createdAt: created is num
           ? DateTime.fromMillisecondsSinceEpoch(created.toInt() * 1000)
           : DateTime.tryParse(created?.toString() ?? ''),

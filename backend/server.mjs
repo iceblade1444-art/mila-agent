@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import {RoomConfiguration} from '@livekit/protocol';
 import {AccessToken} from 'livekit-server-sdk';
 
 import {createAppDb} from './db.mjs';
@@ -32,6 +33,47 @@ const config = {
   enableOpenAiAccount: process.env.ENABLE_OPENAI_ACCOUNT === 'true',
   requireActiveSubscription: process.env.REQUIRE_ACTIVE_SUBSCRIPTION === 'true',
 };
+
+const LIVE_VOICES = new Set([
+  'Laomedeia',
+  'Sulafat',
+  'Achird',
+  'Algieba',
+  'Aoede',
+]);
+const THINKING_LEVELS = new Set(['minimal', 'low', 'medium', 'high']);
+const MEDIA_RESOLUTIONS = new Set(['low', 'medium', 'high']);
+
+function boundedInteger(value, fallback, min, max) {
+  const parsed = Number.parseInt(value, 10);
+  return Math.max(min, Math.min(Number.isFinite(parsed) ? parsed : fallback, max));
+}
+
+export function normalizeLiveProfile(value = {}) {
+  const source = value && typeof value === 'object' && !Array.isArray(value)
+    ? value
+    : {};
+  const contextTriggerTokens = boundedInteger(
+    source.contextTriggerTokens,
+    104857,
+    65536,
+    120000,
+  );
+  return {
+    voiceName: LIVE_VOICES.has(source.voiceName) ? source.voiceName : 'Laomedeia',
+    additionalInstructions: String(source.additionalInstructions || '').trim().slice(0, 12000),
+    thinkingLevel: THINKING_LEVELS.has(source.thinkingLevel) ? source.thinkingLevel : 'low',
+    mediaResolution: MEDIA_RESOLUTIONS.has(source.mediaResolution) ? source.mediaResolution : 'low',
+    contextTriggerTokens,
+    contextTargetTokens: boundedInteger(
+      source.contextTargetTokens,
+      52428,
+      32768,
+      contextTriggerTokens - 8192,
+    ),
+    functionCalling: source.functionCalling !== false,
+  };
+}
 
 export function createMilaServer(options = {}) {
   const cfg = {...config, ...options.config};
@@ -151,6 +193,30 @@ export function createMilaServer(options = {}) {
       throw error;
     }
     return data;
+  }
+
+  async function agenticAccount(req) {
+    if (!cfg.agenticOsUrl) {
+      const error = new Error('Agentic OS is not configured');
+      error.status = 503;
+      throw error;
+    }
+    const authorization = req.headers.authorization || '';
+    if (!/^Bearer\s+\S+$/i.test(authorization)) {
+      const error = new Error('Agentic OS account token is required');
+      error.status = 401;
+      throw error;
+    }
+    const response = await fetchImpl(`${cfg.agenticOsUrl}/api/auth/me`, {
+      headers: {Authorization: authorization},
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.authed || !data.user) {
+      const error = new Error('Invalid or expired Agentic OS account');
+      error.status = 401;
+      throw error;
+    }
+    return normalizeOwner(data.user);
   }
 
   function requireSession(req, res) {
@@ -355,6 +421,25 @@ export function createMilaServer(options = {}) {
           send(res, 200, renderCodePage(code, label));
           return;
         }
+      }
+
+      if (
+        req.method === 'POST' &&
+        url.pathname === '/v1/auth/agentic'
+      ) {
+        const owner = await agenticAccount(req);
+        if (!owner) {
+          sendJson(res, 401, {error: 'Agentic OS account is unavailable'});
+          return;
+        }
+        const label = owner.email || owner.name || 'MILA user';
+        const token = createSession(label, JSON.stringify(owner));
+        sendJson(res, 201, {
+          token,
+          label,
+          owner,
+        });
+        return;
       }
 
       if (
@@ -694,6 +779,7 @@ export function createMilaServer(options = {}) {
 
         const body = await readJson(req);
         const language = normalizeLanguage(body.language);
+        const profile = normalizeLiveProfile(body.profile);
         const owner = ownerFromJson(session.ownerJson);
         const room = `mila-${crypto.randomUUID()}`;
         const identityBase = owner?.id || owner?.email || session.label;
@@ -718,6 +804,13 @@ export function createMilaServer(options = {}) {
           canPublish: true,
           canSubscribe: true,
           canPublishData: true,
+        });
+        token.roomConfig = new RoomConfiguration({
+          metadata: JSON.stringify({
+            language,
+            profile,
+            source: 'agentic-os',
+          }),
         });
 
         sendJson(res, 201, {

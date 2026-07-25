@@ -547,9 +547,14 @@ class SettingsScreen extends ConsumerWidget {
               label: l10n.pick(ru: 'Выйти', en: 'Log Out', uz: 'Chiqish'),
               icon: Icons.logout_rounded,
               danger: true,
-              onPressed: () {
+              onPressed: () async {
                 unawaited(ref.read(googleAuthServiceProvider).signOut());
+                final secure = ref.read(secureStoreProvider);
+                await secure.write(SecureStore.agenticOsAccessToken, '');
+                await secure.write(SecureStore.openAiAccountToken, '');
+                await secure.write(SecureStore.openAiAccountLabel, '');
                 ref.read(profileProvider.notifier).signOut();
+                if (!context.mounted) return;
                 context.go('/signin');
               },
             ),
