@@ -50,6 +50,40 @@ void main() {
     expect(session.ownerRole, 'Member');
   });
 
+  test('Creator can sign in without an email address', () async {
+    final client = MockClient((request) async {
+      if (request.url.path == '/api/auth/mobile/login') {
+        expect(jsonDecode(request.body), {
+          'email': '',
+          'password': 'creator-password',
+        });
+        return http.Response(
+          jsonEncode({
+            'accessToken': 'creator-account-token',
+            'user': {
+              'id': 'creator',
+              'name': 'Creator',
+              'email': '',
+              'role': 'Creator',
+            },
+          }),
+          200,
+        );
+      }
+      return http.Response(jsonEncode({'token': 'creator-voice-token'}), 201);
+    });
+
+    final session = await const MilaAccountService().signIn(
+      baseUrl: 'https://agent.example.test/mila',
+      email: '',
+      password: 'creator-password',
+      client: client,
+    );
+
+    expect(session.label, 'Creator');
+    expect(session.ownerRole, 'Creator');
+  });
+
   test('exchanges a normalized one-time code for a MILA session', () async {
     final client = MockClient((request) async {
       expect(request.url.toString(), 'https://example.test/v1/auth/device');

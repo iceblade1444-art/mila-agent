@@ -177,23 +177,41 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                     ),
                     const SizedBox(height: 16),
                   ],
-                  Text('Email', style: text.labelMedium),
+                  Text(
+                    _creating
+                        ? 'Email'
+                        : l10n.pick(
+                            ru: 'Email (оставьте пустым для Creator)',
+                            en: 'Email (leave blank for Creator)',
+                            uz: 'Email (Creator uchun bo‘sh qoldiring)',
+                          ),
+                    style: text.labelMedium,
+                  ),
                   const SizedBox(height: 8),
                   TextFormField(
                     controller: _email,
                     keyboardType: TextInputType.emailAddress,
                     autofillHints: const [AutofillHints.email],
-                    decoration: const InputDecoration(
-                      hintText: 'hello@milaai.app',
+                    decoration: InputDecoration(
+                      hintText: _creating
+                          ? 'hello@milaai.app'
+                          : l10n.pick(
+                              ru: 'Email или пусто для Creator',
+                              en: 'Email or blank for Creator',
+                              uz: 'Email yoki Creator uchun bo‘sh',
+                            ),
                     ),
-                    validator: (v) =>
-                        v != null && v.contains('@') && v.contains('.')
-                        ? null
-                        : l10n.pick(
-                            ru: 'Введите корректный email',
-                            en: 'Enter a valid email',
-                            uz: 'To\'g\'ri email kiriting',
-                          ),
+                    validator: (v) {
+                      final value = (v ?? '').trim();
+                      if (!_creating && value.isEmpty) return null;
+                      return value.contains('@') && value.contains('.')
+                          ? null
+                          : l10n.pick(
+                              ru: 'Введите корректный email',
+                              en: 'Enter a valid email',
+                              uz: 'To\'g\'ri email kiriting',
+                            );
+                    },
                   ),
                   const SizedBox(height: 16),
                   Text(

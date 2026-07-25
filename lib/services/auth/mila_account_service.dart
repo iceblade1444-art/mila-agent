@@ -103,10 +103,9 @@ class MilaAccountService {
       return MilaAccountSession(
         token: voiceToken,
         accountToken: accountToken,
-        label:
-            owner['email'] as String? ??
-            owner['name'] as String? ??
-            'MILA user',
+        label: (owner['email'] as String? ?? '').trim().isNotEmpty
+            ? owner['email'] as String
+            : (owner['name'] as String? ?? 'MILA user'),
         ownerName: owner['name'] as String? ?? '',
         ownerEmail: owner['email'] as String? ?? '',
         ownerRole: owner['role'] as String? ?? 'Member',
