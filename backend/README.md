@@ -57,6 +57,13 @@ Invoke-RestMethod http://localhost:8787/admin/app/update `
 ## Production Notes
 
 Keep provider secrets, billing checks, SQLite data, and release APKs on the
-server. Do not commit `backend/.env`, `backend/data`, or `downloads`.
+server. Do not commit `.env`, `backend/.env`, `backend/.env.before-*`,
+`backend/data`, `backups`, or `downloads`.
 
 SQLite data is stored in `DB_PATH`; back this file up on the server.
+Device sessions expire after `SESSION_TTL_DAYS` (30 by default, maximum 90).
+After copying or restoring production data, harden permissions with:
+
+```bash
+bash scripts/harden-server-data.sh /opt/mila
+```

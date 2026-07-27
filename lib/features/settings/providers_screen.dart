@@ -85,6 +85,13 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
       await secure.write(SecureStore.milaBackendUrl, _serverUrl.text);
       await secure.write(SecureStore.openAiAccountToken, session.token);
       await secure.write(SecureStore.openAiAccountLabel, session.label);
+      if (session.accountToken.isNotEmpty) {
+        await secure.write(
+          SecureStore.agenticOsAccessToken,
+          session.accountToken,
+        );
+        await secure.write(SecureStore.agenticOsAccountRole, session.ownerRole);
+      }
       if (session.ownerName.isNotEmpty || session.ownerEmail.isNotEmpty) {
         final currentProfile = ref.read(profileProvider);
         ref

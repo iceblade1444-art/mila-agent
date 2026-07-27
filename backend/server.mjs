@@ -25,6 +25,7 @@ const config = {
   livekitApiKey: process.env.LIVEKIT_API_KEY || '',
   livekitApiSecret: process.env.LIVEKIT_API_SECRET || '',
   sessionSecret: process.env.SESSION_SECRET || 'dev-session-secret',
+  sessionTtlDays: Number(process.env.SESSION_TTL_DAYS || 30),
   dbPath: process.env.DB_PATH || path.join(dirname, 'data', 'mila.db'),
   downloadsDir: process.env.DOWNLOADS_DIR || path.join(dirname, 'downloads'),
   adminToken: process.env.ADMIN_TOKEN || '',
@@ -137,13 +138,14 @@ export function createMilaServer(options = {}) {
     };
   }
 
-  function createCode(label, owner = null) {
+  function createCode(label, owner = null, accountGrant = '') {
     const code = crypto.randomBytes(4).toString('hex').toUpperCase();
     const cleanOwner = normalizeOwner(owner);
     db.createCode(
       code,
       label || 'ChatGPT account',
       cleanOwner ? JSON.stringify(cleanOwner) : null,
+      String(accountGrant || '').trim().slice(0, 8192),
       Date.now() + 10 * 60 * 1000,
     );
     return code;
@@ -151,11 +153,13 @@ export function createMilaServer(options = {}) {
 
   function createSession(label, ownerJson = null) {
     const token = crypto.randomBytes(32).toString('base64url');
+    const ttlDays = boundedInteger(cfg.sessionTtlDays, 30, 1, 90);
     db.createSession(
       hashToken(token, cfg.sessionSecret),
       label,
       crypto.randomUUID().replaceAll('-', ''),
       ownerJson,
+      Date.now() + ttlDays * 24 * 60 * 60 * 1000,
     );
     return token;
   }
@@ -326,7 +330,7 @@ export function createMilaServer(options = {}) {
         const body = await readJson(req);
         const label = String(body.label || body.owner?.email || body.owner?.name || '').trim() || 'MILA user';
         const owner = normalizeOwner(body.owner);
-        const code = createCode(label, owner);
+        const code = createCode(label, owner, body.accountGrant);
         sendJson(res, 200, {ok: true, code, label, owner, expiresInSeconds: 600});
         return;
       }
@@ -457,7 +461,11 @@ export function createMilaServer(options = {}) {
 
         db.deleteCode(code);
         const token = createSession(record.label, record.ownerJson || null);
-        sendJson(res, 200, {token, ...publicSession(record)});
+        sendJson(res, 200, {
+          token,
+          ...publicSession(record),
+          ...(record.accountGrant ? {accountGrant: record.accountGrant} : {}),
+        });
         return;
       }
 

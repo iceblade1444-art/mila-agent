@@ -142,18 +142,42 @@ class MilaAccountService {
       final json = _decode(response.body);
       final token = json['token'] as String? ?? '';
       final label = json['label'] as String? ?? 'MILA user';
-      final owner = ((json['owner'] as Map?) ?? const {})
-          .cast<String, dynamic>();
+      var owner = ((json['owner'] as Map?) ?? const {}).cast<String, dynamic>();
       if (response.statusCode != 200 || token.isEmpty) {
         throw FormatException(
           json['error'] as String? ?? 'Could not connect the MILA account.',
         );
       }
+      var accountToken = '';
+      final accountGrant = json['accountGrant'] as String? ?? '';
+      if (accountGrant.isNotEmpty) {
+        final accountResponse = await httpClient
+            .post(
+              Uri.parse('${_agenticRoot(root)}/api/auth/mobile/exchange'),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({'grant': accountGrant}),
+            )
+            .timeout(const Duration(seconds: 12));
+        final accountJson = _decode(accountResponse.body);
+        accountToken = accountJson['accessToken'] as String? ?? '';
+        if (accountResponse.statusCode < 200 ||
+            accountResponse.statusCode >= 300 ||
+            accountToken.isEmpty) {
+          throw FormatException(
+            accountJson['error'] as String? ??
+                'Could not connect the Agentic OS account.',
+          );
+        }
+        owner = ((accountJson['user'] as Map?) ?? owner)
+            .cast<String, dynamic>();
+      }
       return MilaAccountSession(
         token: token,
+        accountToken: accountToken,
         label: label,
         ownerName: owner['name'] as String? ?? '',
         ownerEmail: owner['email'] as String? ?? '',
+        ownerRole: owner['role'] as String? ?? 'Member',
       );
     } finally {
       if (shouldClose) httpClient.close();

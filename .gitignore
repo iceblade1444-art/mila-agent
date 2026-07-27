@@ -53,10 +53,13 @@ android/key.properties
 *.keystore
 
 # Backend secrets
+/.env
 backend/.env
+backend/.env.before-*
 backend/data/
 backend/node_modules/
 
 # Server deployment artifacts
+/backups/
 downloads/
 dist/

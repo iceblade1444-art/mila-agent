@@ -85,31 +85,70 @@ void main() {
   });
 
   test('exchanges a normalized one-time code for a MILA session', () async {
+    final requests = <http.Request>[];
     final client = MockClient((request) async {
-      expect(request.url.toString(), 'https://example.test/v1/auth/device');
-      expect(jsonDecode(request.body), {'code': 'AB12CD34'});
+      requests.add(request);
+      if (request.url.path == '/mila/v1/auth/device') {
+        expect(jsonDecode(request.body), {'code': 'AB12CD34'});
+        return http.Response(
+          jsonEncode({
+            'token': 'session-token',
+            'label': 'Mobile user',
+            'accountGrant': 'short-lived-pairing-grant',
+            'owner': {'name': 'Creator', 'email': 'creator@example.com'},
+          }),
+          200,
+          headers: {'Content-Type': 'application/json'},
+        );
+      }
+      expect(request.url.path, '/api/auth/mobile/exchange');
+      expect(jsonDecode(request.body), {'grant': 'short-lived-pairing-grant'});
       return http.Response(
         jsonEncode({
-          'token': 'session-token',
-          'label': 'Mobile user',
-          'owner': {'name': 'Creator', 'email': 'creator@example.com'},
+          'accessToken': 'agentic-account-token',
+          'user': {
+            'name': 'Creator',
+            'email': 'creator@example.com',
+            'role': 'Creator',
+          },
         }),
         200,
-        headers: {'Content-Type': 'application/json'},
       );
     });
 
     final session = await const MilaAccountService().exchangeCode(
-      baseUrl: 'https://example.test/',
+      baseUrl: 'https://example.test/mila',
       code: 'ab12cd34',
       client: client,
     );
 
+    expect(requests.length, 2);
     expect(session.token, 'session-token');
+    expect(session.accountToken, 'agentic-account-token');
     expect(session.label, 'Mobile user');
     expect(session.ownerName, 'Creator');
     expect(session.ownerEmail, 'creator@example.com');
+    expect(session.ownerRole, 'Creator');
   });
+
+  test(
+    'legacy voice-only code still connects without an account grant',
+    () async {
+      final client = MockClient(
+        (request) async => http.Response(
+          jsonEncode({'token': 'voice-only-token', 'label': 'Voice only'}),
+          200,
+        ),
+      );
+      final session = await const MilaAccountService().exchangeCode(
+        baseUrl: 'https://example.test/mila',
+        code: 'AB12CD34',
+        client: client,
+      );
+      expect(session.token, 'voice-only-token');
+      expect(session.accountToken, isEmpty);
+    },
+  );
 
   test('rejects an invalid connection code before making a request', () async {
     expect(

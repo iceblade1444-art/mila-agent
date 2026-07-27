@@ -5,6 +5,7 @@ import path from 'node:path';
 import {test} from 'node:test';
 import {TokenVerifier} from 'livekit-server-sdk';
 
+import {createAppDb} from '../db.mjs';
 import {createMilaServer, normalizeLiveProfile} from '../server.mjs';
 
 async function withServer(options, run) {
@@ -136,6 +137,55 @@ test('Agentic OS connection code unifies the mobile session owner', async () => 
       });
     },
   );
+});
+
+test('Agentic OS connection code returns the short-lived account grant once', async () => {
+  await withServer(
+    {config: {adminToken: 'admin-secret'}},
+    async (baseUrl) => {
+      const issued = await fetch(`${baseUrl}/admin/connection-code`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Token': 'admin-secret',
+        },
+        body: JSON.stringify({
+          label: 'Mobile member',
+          accountGrant: 'signed-short-lived-grant',
+        }),
+      });
+      const {code} = await issued.json();
+      const exchange = await fetch(`${baseUrl}/v1/auth/device`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({code}),
+      });
+      const session = await exchange.json();
+      assert.equal(session.accountGrant, 'signed-short-lived-grant');
+
+      const reused = await fetch(`${baseUrl}/v1/auth/device`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({code}),
+      });
+      assert.equal(reused.status, 400);
+    },
+  );
+});
+
+test('expired MILA sessions are rejected and removed', () => {
+  const db = createAppDb(':memory:');
+  try {
+    db.createSession('expired-hash', 'Old device', 'a'.repeat(32), null, Date.now() - 1);
+    assert.equal(db.getSession('expired-hash'), undefined);
+    assert.deepEqual(db.listSessions(), []);
+
+    db.createSession('active-hash', 'Current device', 'b'.repeat(32), null, Date.now() + 10000);
+    assert.equal(db.getSession('active-hash').label, 'Current device');
+    assert.equal(db.listSessions()[0].active, true);
+  } finally {
+    db.close();
+  }
 });
 
 test('authenticated Agentic OS account creates a private MILA voice session', async () => {
