@@ -11,11 +11,15 @@
 1. Приложение отправляет email и пароль в
    `POST /api/auth/mobile/login` или создает аккаунт через
    `POST /api/auth/mobile/register`.
-2. Agentic OS возвращает подписанный мобильный access token. Он хранится в
+2. Если для Creator/Admin включена MFA, сервер возвращает одноразовый challenge
+   со сроком пять минут. Приложение принимает шестизначный TOTP или резервный
+   код через `POST /api/auth/mfa/verify`. Challenge живет только в памяти и
+   удаляется при отмене, истечении срока или успешном входе.
+3. Agentic OS возвращает подписанный мобильный access token. Он хранится в
    Android Keystore или iOS Keychain.
-3. Приложение обменивает этот token через
+4. Приложение обменивает этот token через
    `POST /mila/v1/auth/agentic` на отдельную MILA voice session.
-4. Основной token используется только с `/api/member/*`. Voice session
+5. Основной token используется только с `/api/member/*`. Voice session
    используется только для Gemini Live и LiveKit.
 
 Пользователь выполняет вход один раз. Разделение токенов происходит внутри

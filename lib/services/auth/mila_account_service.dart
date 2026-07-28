@@ -23,6 +23,20 @@ class MilaAccountSession {
   final String ownerRole;
 }
 
+class MilaMfaRequiredException implements Exception {
+  const MilaMfaRequiredException({
+    required this.challenge,
+    required this.expiresInSeconds,
+    this.ownerName = '',
+    this.ownerRole = 'Member',
+  });
+
+  final String challenge;
+  final int expiresInSeconds;
+  final String ownerName;
+  final String ownerRole;
+}
+
 class MilaAccountService {
   const MilaAccountService();
 
@@ -72,6 +86,24 @@ class MilaAccountService {
           )
           .timeout(const Duration(seconds: 12));
       final accountJson = _decode(accountResponse.body);
+      if (accountResponse.statusCode == 202 &&
+          accountJson['mfaRequired'] == true) {
+        final challenge = accountJson['challenge'] as String? ?? '';
+        if (challenge.isEmpty) {
+          throw const FormatException(
+            'The server did not return an MFA challenge.',
+          );
+        }
+        final owner = ((accountJson['user'] as Map?) ?? const {})
+            .cast<String, dynamic>();
+        throw MilaMfaRequiredException(
+          challenge: challenge,
+          expiresInSeconds:
+              (accountJson['expiresInSeconds'] as num?)?.toInt() ?? 300,
+          ownerName: owner['name'] as String? ?? '',
+          ownerRole: owner['role'] as String? ?? 'Member',
+        );
+      }
       final accountToken = accountJson['accessToken'] as String? ?? '';
       final owner = ((accountJson['user'] as Map?) ?? const {})
           .cast<String, dynamic>();
@@ -83,36 +115,92 @@ class MilaAccountService {
         );
       }
 
-      final voiceResponse = await httpClient
-          .post(
-            Uri.parse('$milaRoot/v1/auth/agentic'),
-            headers: {'Authorization': 'Bearer $accountToken'},
-          )
-          .timeout(const Duration(seconds: 12));
-      final voiceJson = _decode(voiceResponse.body);
-      final voiceToken = voiceJson['token'] as String? ?? '';
-      if (voiceResponse.statusCode < 200 ||
-          voiceResponse.statusCode >= 300 ||
-          voiceToken.isEmpty) {
-        throw FormatException(
-          voiceJson['error'] as String? ??
-              'Could not create the MILA voice session.',
-        );
-      }
-
-      return MilaAccountSession(
-        token: voiceToken,
+      return _createSession(
+        milaRoot: milaRoot,
         accountToken: accountToken,
-        label: (owner['email'] as String? ?? '').trim().isNotEmpty
-            ? owner['email'] as String
-            : (owner['name'] as String? ?? 'MILA user'),
-        ownerName: owner['name'] as String? ?? '',
-        ownerEmail: owner['email'] as String? ?? '',
-        ownerRole: owner['role'] as String? ?? 'Member',
+        owner: owner,
+        client: httpClient,
       );
     } finally {
       if (shouldClose) httpClient.close();
     }
+  }
+
+  Future<MilaAccountSession> verifyMfa({
+    required String baseUrl,
+    required String challenge,
+    required String code,
+    http.Client? client,
+  }) async {
+    final milaRoot = _root(baseUrl);
+    final httpClient = client ?? http.Client();
+    final shouldClose = client == null;
+    try {
+      final response = await httpClient
+          .post(
+            Uri.parse('${_agenticRoot(milaRoot)}/api/auth/mfa/verify'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'challenge': challenge,
+              'code': code.trim().replaceAll(' ', ''),
+            }),
+          )
+          .timeout(const Duration(seconds: 12));
+      final json = _decode(response.body);
+      final accountToken = json['accessToken'] as String? ?? '';
+      final owner = ((json['user'] as Map?) ?? const {})
+          .cast<String, dynamic>();
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300 ||
+          accountToken.isEmpty) {
+        throw FormatException(
+          json['error'] as String? ?? 'Could not verify the MFA code.',
+        );
+      }
+      return _createSession(
+        milaRoot: milaRoot,
+        accountToken: accountToken,
+        owner: owner,
+        client: httpClient,
+      );
+    } finally {
+      if (shouldClose) httpClient.close();
+    }
+  }
+
+  Future<MilaAccountSession> _createSession({
+    required String milaRoot,
+    required String accountToken,
+    required Map<String, dynamic> owner,
+    required http.Client client,
+  }) async {
+    final voiceResponse = await client
+        .post(
+          Uri.parse('$milaRoot/v1/auth/agentic'),
+          headers: {'Authorization': 'Bearer $accountToken'},
+        )
+        .timeout(const Duration(seconds: 12));
+    final voiceJson = _decode(voiceResponse.body);
+    final voiceToken = voiceJson['token'] as String? ?? '';
+    if (voiceResponse.statusCode < 200 ||
+        voiceResponse.statusCode >= 300 ||
+        voiceToken.isEmpty) {
+      throw FormatException(
+        voiceJson['error'] as String? ??
+            'Could not create the MILA voice session.',
+      );
+    }
+
+    return MilaAccountSession(
+      token: voiceToken,
+      accountToken: accountToken,
+      label: (owner['email'] as String? ?? '').trim().isNotEmpty
+          ? owner['email'] as String
+          : (owner['name'] as String? ?? 'MILA user'),
+      ownerName: owner['name'] as String? ?? '',
+      ownerEmail: owner['email'] as String? ?? '',
+      ownerRole: owner['role'] as String? ?? 'Member',
+    );
   }
 
   Future<MilaAccountSession> exchangeCode({

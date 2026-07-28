@@ -84,6 +84,75 @@ void main() {
     expect(session.ownerRole, 'Creator');
   });
 
+  test(
+    'completes a mobile MFA challenge before creating voice session',
+    () async {
+      final requests = <http.Request>[];
+      final client = MockClient((request) async {
+        requests.add(request);
+        if (request.url.path == '/api/auth/mobile/login') {
+          return http.Response(
+            jsonEncode({
+              'mfaRequired': true,
+              'challenge': 'short-lived-challenge',
+              'expiresInSeconds': 300,
+              'user': {'name': 'Creator', 'role': 'Creator'},
+            }),
+            202,
+          );
+        }
+        if (request.url.path == '/api/auth/mfa/verify') {
+          expect(jsonDecode(request.body), {
+            'challenge': 'short-lived-challenge',
+            'code': '123456',
+          });
+          return http.Response(
+            jsonEncode({
+              'accessToken': 'mfa-account-token',
+              'user': {
+                'name': 'Creator',
+                'email': 'creator@example.com',
+                'role': 'Creator',
+              },
+            }),
+            200,
+          );
+        }
+        expect(request.url.path, '/mila/v1/auth/agentic');
+        expect(request.headers['authorization'], 'Bearer mfa-account-token');
+        return http.Response(jsonEncode({'token': 'mfa-voice-token'}), 201);
+      });
+
+      MilaMfaRequiredException? challenge;
+      try {
+        await const MilaAccountService().signIn(
+          baseUrl: 'https://agent.example.test/mila',
+          email: '',
+          password: 'creator-password',
+          client: client,
+        );
+      } on MilaMfaRequiredException catch (error) {
+        challenge = error;
+      }
+
+      expect(challenge?.challenge, 'short-lived-challenge');
+      expect(challenge?.expiresInSeconds, 300);
+      expect(requests.length, 1);
+
+      final session = await const MilaAccountService().verifyMfa(
+        baseUrl: 'https://agent.example.test/mila',
+        challenge: challenge!.challenge,
+        code: '123 456',
+        client: client,
+      );
+
+      expect(requests.length, 3);
+      expect(session.accountToken, 'mfa-account-token');
+      expect(session.token, 'mfa-voice-token');
+      expect(session.ownerRole, 'Creator');
+    },
+  );
+
   test('exchanges a normalized one-time code for a MILA session', () async {
     final requests = <http.Request>[];
     final client = MockClient((request) async {

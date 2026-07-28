@@ -41,6 +41,12 @@ session, while Gemini and LiveKit secrets remain server-side. Personal tasks
 and notes synchronize through `/api/member/*`. See
 `docs/UNIFIED_ACCOUNTS_RU.md` and `docs/AGENTIC_OS_SYNC_RU.md`.
 
+Creator and Admin accounts with two-factor authentication enabled use the same
+TOTP or recovery code on mobile as on the web. The five-minute MFA challenge is
+kept in memory only; the app stores the revocable mobile session after the
+second factor succeeds. Regular Member accounts continue to sign in with email
+and password without an extra step unless MFA is enabled for that role later.
+
 Adding another LLM vendor = one new `LlmProvider` subclass and a settings entry.
 
 ## Quick start
@@ -210,8 +216,9 @@ Then `flutter build ipa --release` and distribute via TestFlight/App Store
 - **Updates:** publish APK metadata through `/admin/app/update`; the mobile app
   checks `/v1/app/update` from Settings → Check for Updates. Store the APK at
   the URL you publish in `apkUrl`.
-- **Auth:** sign-in is a local profile today. To use your own backend, wire
-  `sign_in_screen.dart` to your API and keep saving the same `UserProfile`.
+- **Auth:** registration, password sign-in, mobile session issuance and
+  Creator/Admin MFA are backed by the Agentic OS API. Device tokens live in
+  Android Keystore / iOS Keychain and can be revoked from the web account.
 - **Integrations (Gmail, Telegram, Calendar, ERP/CRM):** the screen stores
   connection flags; each real integration needs an OAuth flow + API calls,
   best done through your server so tokens never live only on-device.
