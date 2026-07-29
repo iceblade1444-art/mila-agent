@@ -186,6 +186,7 @@ class _AgenticDashboardCard extends ConsumerWidget {
     final text = Theme.of(context).textTheme;
     final l10n = context.l10n;
     final dashboard = state.dashboard;
+    final calendar = ref.watch(googleCalendarStatusProvider);
     return GlassCard(
       padding: const EdgeInsets.all(18),
       child: Column(
@@ -300,6 +301,21 @@ class _AgenticDashboardCard extends ConsumerWidget {
                       uz: 'Gemini sozlanmagan',
                     ),
             ),
+            _StatusRow(
+              icon: Icons.calendar_month_outlined,
+              label: 'Google Calendar',
+              value: calendar.asData?.value.connected == true
+                  ? l10n.pick(
+                      ru: 'Синхронизирован',
+                      en: 'Synchronized',
+                      uz: 'Sinxronlangan',
+                    )
+                  : l10n.pick(
+                      ru: 'Не подключён',
+                      en: 'Not connected',
+                      uz: 'Ulanmagan',
+                    ),
+            ),
             const SizedBox(height: 14),
             Row(
               children: [
@@ -314,6 +330,16 @@ class _AgenticDashboardCard extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(width: 10),
+                IconButton.filledTonal(
+                  tooltip: l10n.pick(
+                    ru: 'Календарь',
+                    en: 'Calendar',
+                    uz: 'Kalendar',
+                  ),
+                  onPressed: () => context.push('/calendar'),
+                  icon: const Icon(Icons.calendar_month_outlined),
+                ),
+                const SizedBox(width: 8),
                 IconButton.filledTonal(
                   onPressed: () => context.go('/chat'),
                   icon: const Icon(Icons.chat_bubble_outline_rounded),

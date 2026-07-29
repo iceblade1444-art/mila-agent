@@ -6,6 +6,7 @@ import '../../core/i18n/mila_localizations.dart';
 import '../../core/theme/mila_theme.dart';
 import '../../core/widgets/common.dart';
 import '../../core/config/app_config.dart';
+import '../../services/agentic/agentic_os_service.dart';
 import '../../services/integrations/integration_service.dart';
 import '../../services/storage/stores.dart';
 
@@ -37,9 +38,8 @@ class _Item {
 }
 
 /// Integrations (design screen 14) — every row actually works:
-/// Telegram sends through your bot, Slack/ERP post to webhooks, Gmail /
-/// WhatsApp / Calendar run through the apps on the device, AI providers
-/// link to the key settings.
+/// Telegram sends through your bot, Slack/ERP post to webhooks, Gmail and
+/// WhatsApp use device apps, while Calendar synchronizes through Agentic OS.
 class IntegrationsScreen extends ConsumerWidget {
   const IntegrationsScreen({super.key});
 
@@ -62,7 +62,7 @@ class IntegrationsScreen extends ConsumerWidget {
       'Google Calendar',
       Icons.calendar_month_outlined,
       Color(0xFF4285F4),
-      'Events in the device calendar',
+      'Synchronized through Agentic OS',
       _Kind.calendar,
     ),
     _Item(
@@ -109,12 +109,13 @@ class IntegrationsScreen extends ConsumerWidget {
     final configs = ref.watch(integrationConfigsProvider);
     final service = ref.read(integrationServiceProvider);
     final keys = ref.watch(providerKeysProvider).value ?? const <String>{};
+    final calendarStatus = ref.watch(googleCalendarStatusProvider);
 
     bool connected(_Item item) => switch (item.kind) {
       _Kind.telegram || _Kind.webhook => service.isConfigured(item.name),
       _Kind.aiProvider => keys.contains(item.name),
-      // Launcher-based integrations are always ready on a phone.
-      _ => true,
+      _Kind.calendar => calendarStatus.asData?.value.connected == true,
+      _Kind.mailApp || _Kind.whatsApp => true,
     };
 
     String subtitleFor(_Item item) {
@@ -136,9 +137,9 @@ class IntegrationsScreen extends ConsumerWidget {
           uz: 'Draftlar email ilovasida ochiladi',
         ),
         'Google Calendar' => l10n.pick(
-          ru: 'События в календаре устройства',
-          en: 'Events in the device calendar',
-          uz: 'Tadbirlar qurilma kalendarida',
+          ru: 'Синхронизация через единый аккаунт Agentic OS',
+          en: 'Synchronized through your Agentic OS account',
+          uz: 'Agentic OS akkaunti orqali sinxronlanadi',
         ),
         'WhatsApp' => l10n.pick(
           ru: 'Сообщения с готовым текстом',
@@ -220,12 +221,8 @@ class IntegrationsScreen extends ConsumerWidget {
         case _Kind.whatsApp:
           snack((await service.sendWhatsApp('MILA connected ✓')).message);
         case _Kind.calendar:
-          snack(
-            (await service.addCalendarEvent(
-              title: 'MILA test event',
-              description: 'Created from the MILA app',
-            )).message,
-          );
+          await context.push('/calendar');
+          ref.invalidate(googleCalendarStatusProvider);
       }
     }
 
@@ -277,8 +274,7 @@ class IntegrationsScreen extends ConsumerWidget {
                                 color:
                                     connected(item) &&
                                         item.kind != _Kind.mailApp &&
-                                        item.kind != _Kind.whatsApp &&
-                                        item.kind != _Kind.calendar
+                                        item.kind != _Kind.whatsApp
                                     ? MilaColors.success
                                     : MilaColors.textSecondary,
                               ),
@@ -295,30 +291,42 @@ class IntegrationsScreen extends ConsumerWidget {
                           gradient:
                               connected(item) &&
                                   item.kind != _Kind.mailApp &&
-                                  item.kind != _Kind.whatsApp &&
-                                  item.kind != _Kind.calendar
+                                  item.kind != _Kind.whatsApp
                               ? null
                               : MilaColors.primaryGradient,
                           color:
                               connected(item) &&
                                   item.kind != _Kind.mailApp &&
-                                  item.kind != _Kind.whatsApp &&
-                                  item.kind != _Kind.calendar
+                                  item.kind != _Kind.whatsApp
                               ? Colors.white.withValues(alpha: 0.07)
                               : null,
                           borderRadius: BorderRadius.circular(18),
                           border:
                               connected(item) &&
                                   item.kind != _Kind.mailApp &&
-                                  item.kind != _Kind.whatsApp &&
-                                  item.kind != _Kind.calendar
+                                  item.kind != _Kind.whatsApp
                               ? Border.all(color: MilaColors.cardBorder)
                               : null,
                         ),
                         child: Text(
                           switch (item.kind) {
-                            _Kind.mailApp || _Kind.whatsApp || _Kind.calendar =>
-                              l10n.pick(ru: 'Тест', en: 'Test', uz: 'Test'),
+                            _Kind.mailApp || _Kind.whatsApp => l10n.pick(
+                              ru: 'Тест',
+                              en: 'Test',
+                              uz: 'Test',
+                            ),
+                            _Kind.calendar =>
+                              connected(item)
+                                  ? l10n.pick(
+                                      ru: 'Открыть',
+                                      en: 'Open',
+                                      uz: 'Ochish',
+                                    )
+                                  : l10n.pick(
+                                      ru: 'Подключить',
+                                      en: 'Connect',
+                                      uz: 'Ulash',
+                                    ),
                             _ =>
                               connected(item)
                                   ? l10n.pick(
@@ -344,9 +352,9 @@ class IntegrationsScreen extends ConsumerWidget {
             const SizedBox(height: 6),
             Text(
               l10n.pick(
-                ru: 'Telegram, Slack и ERP/CRM отправляют сообщения прямо из приложения. Gmail, WhatsApp и Calendar передают действие приложениям телефона. AI-провайдеры настраиваются в Настройки → AI-провайдеры.',
-                en: 'Telegram, Slack and ERP/CRM deliver messages directly from the app. Gmail, WhatsApp and Calendar hand off to the apps on your phone. AI providers are configured in Settings → AI Providers.',
-                uz: 'Telegram, Slack va ERP/CRM xabarlarni ilovadan yuboradi. Gmail, WhatsApp va Calendar ishni telefondagi ilovalarga uzatadi. AI provayderlar Sozlamalar → AI provayderlar ichida sozlanadi.',
+                ru: 'Google Calendar синхронизируется через единый аккаунт Agentic OS. Telegram, Slack и ERP/CRM отправляют сообщения прямо; Gmail и WhatsApp используют приложения телефона.',
+                en: 'Google Calendar synchronizes through your Agentic OS account. Telegram, Slack and ERP/CRM deliver directly; Gmail and WhatsApp use the apps on your phone.',
+                uz: 'Google Calendar Agentic OS akkaunti orqali sinxronlanadi. Telegram, Slack va ERP/CRM to‘g‘ridan yuboradi; Gmail va WhatsApp telefon ilovalaridan foydalanadi.',
               ),
               style: text.bodySmall,
               textAlign: TextAlign.center,

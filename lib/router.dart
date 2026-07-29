@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'features/auth/sign_in_screen.dart';
+import 'features/calendar/calendar_screen.dart';
 import 'features/chat/chat_screen.dart';
 import 'features/command/command_center_screen.dart';
 import 'features/home/home_screen.dart';
@@ -55,6 +56,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/integrations',
         builder: (_, _) => const IntegrationsScreen(),
       ),
+      GoRoute(path: '/calendar', builder: (_, _) => const CalendarScreen()),
       GoRoute(path: '/settings', builder: (_, _) => const SettingsScreen()),
       GoRoute(
         path: '/settings/providers',

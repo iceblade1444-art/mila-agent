@@ -184,6 +184,61 @@ class AgenticOsService {
     );
   }
 
+  Future<GoogleCalendarStatus> googleCalendarStatus({
+    http.Client? client,
+  }) async {
+    final json = await _request(
+      'GET',
+      '/api/personal/google/status',
+      client: client,
+    );
+    return GoogleCalendarStatus.fromJson(json);
+  }
+
+  Future<Uri> beginGoogleCalendarConnect({
+    required String locale,
+    http.Client? client,
+  }) async {
+    final json = await _request(
+      'POST',
+      '/api/personal/google/connect',
+      body: {'client': 'mobile', 'locale': locale},
+      client: client,
+    );
+    final value = Uri.tryParse(json['authorizationUrl'] as String? ?? '');
+    if (value == null || value.scheme != 'https') {
+      throw const AgenticOsException(
+        'Agentic OS did not return a secure Google authorization URL.',
+      );
+    }
+    return value;
+  }
+
+  Future<GoogleCalendarFeed> googleCalendarEvents({
+    DateTime? from,
+    DateTime? to,
+    int limit = 30,
+    http.Client? client,
+  }) async {
+    final query = <String, String>{
+      'from': (from ?? DateTime.now()).toUtc().toIso8601String(),
+      'to': (to ?? DateTime.now().add(const Duration(days: 30)))
+          .toUtc()
+          .toIso8601String(),
+      'limit': limit.clamp(1, 100).toString(),
+    };
+    final path = Uri(
+      path: '/api/personal/google/calendar/events',
+      queryParameters: query,
+    ).toString();
+    final json = await _request('GET', path, client: client);
+    return GoogleCalendarFeed.fromJson(json);
+  }
+
+  Future<void> disconnectGoogleCalendar({http.Client? client}) async {
+    await _request('DELETE', '/api/personal/google', client: client);
+  }
+
   Future<Map<String, dynamic>> _request(
     String method,
     String path, {
@@ -269,6 +324,94 @@ class AgenticOsService {
     } catch (_) {
       return const {};
     }
+  }
+}
+
+class GoogleCalendarStatus {
+  const GoogleCalendarStatus({
+    required this.configured,
+    required this.connected,
+    this.scopes = const [],
+    this.connectedAt,
+  });
+
+  final bool configured;
+  final bool connected;
+  final List<String> scopes;
+  final DateTime? connectedAt;
+
+  factory GoogleCalendarStatus.fromJson(Map<String, dynamic> json) {
+    return GoogleCalendarStatus(
+      configured: json['configured'] == true,
+      connected: json['connected'] == true,
+      scopes: ((json['scopes'] as List?) ?? const [])
+          .map((value) => value.toString())
+          .toList(growable: false),
+      connectedAt: DateTime.tryParse(json['connectedAt']?.toString() ?? ''),
+    );
+  }
+}
+
+class GoogleCalendarEvent {
+  const GoogleCalendarEvent({
+    required this.id,
+    required this.title,
+    required this.start,
+    required this.end,
+    required this.allDay,
+    this.description = '',
+    this.location = '',
+    this.htmlLink = '',
+  });
+
+  final String id;
+  final String title;
+  final DateTime? start;
+  final DateTime? end;
+  final bool allDay;
+  final String description;
+  final String location;
+  final String htmlLink;
+
+  factory GoogleCalendarEvent.fromJson(Map<String, dynamic> json) {
+    return GoogleCalendarEvent(
+      id: json['id'] as String? ?? '',
+      title: json['title'] as String? ?? '',
+      start: DateTime.tryParse(json['start']?.toString() ?? ''),
+      end: DateTime.tryParse(json['end']?.toString() ?? ''),
+      allDay: json['allDay'] == true,
+      description: json['description'] as String? ?? '',
+      location: json['location'] as String? ?? '',
+      htmlLink: json['htmlLink'] as String? ?? '',
+    );
+  }
+}
+
+class GoogleCalendarFeed {
+  const GoogleCalendarFeed({
+    this.events = const [],
+    this.timeZone = '',
+    this.syncedAt,
+  });
+
+  final List<GoogleCalendarEvent> events;
+  final String timeZone;
+  final DateTime? syncedAt;
+
+  factory GoogleCalendarFeed.fromJson(Map<String, dynamic> json) {
+    final values = (json['events'] as List?) ?? const [];
+    return GoogleCalendarFeed(
+      events: values
+          .whereType<Map>()
+          .map(
+            (value) =>
+                GoogleCalendarEvent.fromJson(value.cast<String, dynamic>()),
+          )
+          .where((event) => event.id.isNotEmpty)
+          .toList(growable: false),
+      timeZone: json['timeZone'] as String? ?? '',
+      syncedAt: DateTime.tryParse(json['syncedAt']?.toString() ?? ''),
+    );
   }
 }
 
@@ -505,4 +648,9 @@ final agenticTasksProvider =
 final agenticDashboardProvider =
     StateNotifierProvider<AgenticDashboardController, AgenticDashboardState>(
       AgenticDashboardController.new,
+    );
+
+final googleCalendarStatusProvider =
+    FutureProvider.autoDispose<GoogleCalendarStatus>(
+      (ref) => ref.watch(agenticOsServiceProvider).googleCalendarStatus(),
     );
