@@ -111,25 +111,61 @@ class _BottomBar extends StatelessWidget {
         onTap: () =>
             shell.goBranch(index, initialLocation: index == shell.currentIndex),
         borderRadius: BorderRadius.circular(20),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: 24,
-              color: selected ? MilaColors.cyan : MilaColors.textTertiary,
+        child: AnimatedScale(
+          scale: selected ? 1.08 : 1,
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutBack,
+          child: AnimatedSlide(
+            offset: selected ? const Offset(0, -0.06) : Offset.zero,
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeOutCubic,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 260),
+                  curve: Curves.easeOutCubic,
+                  width: 36,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? MilaColors.cyan.withValues(alpha: 0.1)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: selected
+                        ? [
+                            BoxShadow(
+                              color: MilaColors.cyan.withValues(alpha: 0.14),
+                              blurRadius: 12,
+                            ),
+                          ]
+                        : const [],
+                  ),
+                  child: AnimatedRotation(
+                    turns: selected ? 0 : -0.015,
+                    duration: const Duration(milliseconds: 260),
+                    child: Icon(
+                      icon,
+                      size: 23,
+                      color: selected
+                          ? MilaColors.cyan
+                          : MilaColors.textTertiary,
+                    ),
+                  ),
+                ),
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 260),
+                  curve: Curves.easeOutCubic,
+                  width: selected ? 14 : 0,
+                  height: 3,
+                  decoration: BoxDecoration(
+                    gradient: MilaColors.primaryGradient,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 3),
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: selected ? 14 : 0,
-              height: 3,
-              decoration: BoxDecoration(
-                gradient: MilaColors.primaryGradient,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

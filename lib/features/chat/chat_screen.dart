@@ -571,35 +571,71 @@ class _DateDivider extends StatelessWidget {
   }
 }
 
-class _MilaAvatar extends StatelessWidget {
+class _MilaAvatar extends StatefulWidget {
   const _MilaAvatar({this.size = 34});
 
   final double size;
 
   @override
-  Widget build(BuildContext context) => Container(
-    width: size,
-    height: size,
-    decoration: BoxDecoration(
-      gradient: MilaColors.orbGradient,
-      shape: BoxShape.circle,
-      border: Border.all(color: Colors.white.withValues(alpha: 0.42)),
-      boxShadow: [
-        BoxShadow(
-          color: MilaColors.cyan.withValues(alpha: 0.2),
-          blurRadius: 12,
+  State<_MilaAvatar> createState() => _MilaAvatarState();
+}
+
+class _MilaAvatarState extends State<_MilaAvatar>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2200),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Widget _avatar(double progress) {
+    final pulse = Curves.easeInOut.transform(progress);
+    final size = widget.size;
+    return Transform.scale(
+      scale: 0.97 + pulse * 0.05,
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          gradient: MilaColors.orbGradient,
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white.withValues(alpha: 0.42)),
+          boxShadow: [
+            BoxShadow(
+              color: MilaColors.cyan.withValues(alpha: 0.16 + pulse * 0.18),
+              blurRadius: 10 + pulse * 8,
+              spreadRadius: pulse * 1.5,
+            ),
+          ],
         ),
-      ],
-    ),
-    child: Container(
-      margin: EdgeInsets.all(size * 0.12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF11182A).withValues(alpha: 0.74),
-        shape: BoxShape.circle,
+        child: Container(
+          margin: EdgeInsets.all(size * 0.12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF11182A).withValues(alpha: 0.74),
+            shape: BoxShape.circle,
+          ),
+          child: Transform.rotate(
+            angle: (pulse - 0.5) * 0.16,
+            child: Icon(Icons.auto_awesome_rounded, size: size * 0.44),
+          ),
+        ),
       ),
-      child: Icon(Icons.auto_awesome_rounded, size: size * 0.44),
-    ),
-  );
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (MediaQuery.disableAnimationsOf(context)) return _avatar(0.5);
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (_, _) => _avatar(_controller.value),
+    );
+  }
 }
 
 class _MessageBubble extends ConsumerWidget {
@@ -1108,12 +1144,7 @@ class _InputBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-        16,
-        4,
-        16,
-        MediaQuery.paddingOf(context).bottom + 96,
-      ),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 88),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [

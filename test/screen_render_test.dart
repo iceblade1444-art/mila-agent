@@ -5,9 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mila/data/models.dart';
 import 'package:mila/features/chat/chat_screen.dart';
 import 'package:mila/features/onboarding/assistant_setup_screen.dart';
+import 'package:mila/features/shell/shell_screen.dart';
 import 'package:mila/features/tasks/tasks_screen.dart';
 import 'package:mila/services/agentic/agentic_os_service.dart';
 import 'package:mila/services/storage/stores.dart';
@@ -154,5 +156,77 @@ void main() {
       ),
     );
     await capture(tester, tasksKey, 'screen_agentic_tasks');
+  });
+
+  testWidgets('chat composer sits directly above the animated bottom bar', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(412, 915));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final store = _RenderStore();
+    final shellKey = GlobalKey();
+    final router = GoRouter(
+      initialLocation: '/chat',
+      routes: [
+        StatefulShellRoute.indexedStack(
+          builder: (_, _, shell) => RepaintBoundary(
+            key: shellKey,
+            child: ShellScreen(shell: shell),
+          ),
+          branches: [
+            StatefulShellBranch(
+              routes: [
+                GoRoute(
+                  path: '/home',
+                  builder: (_, _) => const SizedBox.shrink(),
+                ),
+              ],
+            ),
+            StatefulShellBranch(
+              routes: [
+                GoRoute(
+                  path: '/command',
+                  builder: (_, _) => const SizedBox.shrink(),
+                ),
+              ],
+            ),
+            StatefulShellBranch(
+              routes: [
+                GoRoute(path: '/chat', builder: (_, _) => const ChatScreen()),
+              ],
+            ),
+            StatefulShellBranch(
+              routes: [
+                GoRoute(
+                  path: '/tasks',
+                  builder: (_, _) => const SizedBox.shrink(),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [localStoreProvider.overrideWithValue(store)],
+        child: MaterialApp.router(
+          debugShowCheckedModeBanner: false,
+          theme: ThemeData.dark(useMaterial3: true),
+          routerConfig: router,
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 700));
+
+    final composerBottom = tester.getBottomLeft(find.byType(TextField)).dy;
+    final navigationIconTop = tester
+        .getTopLeft(find.byIcon(Icons.chat_bubble_outline_rounded).last)
+        .dy;
+    expect(composerBottom, lessThan(navigationIconTop));
+    expect(navigationIconTop - composerBottom, lessThan(38));
+    await capture(tester, shellKey, 'screen_chat_shell');
   });
 }
