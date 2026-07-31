@@ -14,7 +14,7 @@ currently disabled.
 | Home Dashboard + suggestions (05) | ✅ |
 | Voice assistant: idle / listening / thinking / speaking (06–09) | ✅ Gemini Live, acoustic echo protection, live camera vision |
 | Chat transcript + AI action cards (09–10) | ✅ streaming, photos, camera and document attachments |
-| Personal Inbox push notifications | ✅ account-scoped FCM transport with server sync |
+| Personal Inbox push notifications | ✅ account-scoped Android/iOS FCM transport with server sync |
 | Command Center shortcuts (11) | ✅ |
 | Tasks & Automations (12) | ✅ Hermes Kanban sync; local fallback before pairing |
 | Memory Vault (13) | ✅ Obsidian sync; injected into text and voice prompts |
@@ -187,7 +187,11 @@ keystore safe**.
 ### iOS
 
 Requires macOS + Xcode. `Info.plist` already contains the microphone /
-calendar / contacts usage strings and background-audio mode. After the first
+calendar / contacts usage strings, background-audio mode and remote notification
+mode. `Runner.entitlements` enables the development APNs environment for Debug
+and production APNs for Profile/Release. Register the iOS bundle
+`app.milaai.mila` in Firebase, upload an Apple APNs authentication key to
+Firebase, and use the Firebase iOS app identifiers as Dart defines. After the first
 `pod install`, enable the permission macros `permission_handler` needs in
 `ios/Podfile`:
 
@@ -207,7 +211,18 @@ post_install do |installer|
 end
 ```
 
-Then `flutter build ipa --release` and distribute via TestFlight/App Store
+Then build with the public Firebase client identifiers:
+
+```bash
+flutter build ipa --release \
+  --dart-define=MILA_FIREBASE_API_KEY=... \
+  --dart-define=MILA_FIREBASE_PROJECT_ID=... \
+  --dart-define=MILA_FIREBASE_MESSAGING_SENDER_ID=... \
+  --dart-define=MILA_FIREBASE_IOS_APP_ID=... \
+  --dart-define=MILA_FIREBASE_IOS_BUNDLE_ID=app.milaai.mila
+```
+
+Distribute the resulting IPA via TestFlight/App Store
 (ad-hoc server distribution on iOS requires an enterprise account).
 
 ## Production hardening checklist
