@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -28,9 +29,11 @@ class ChatScreen extends ConsumerStatefulWidget {
 
 class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _input = TextEditingController();
+  final _inputFocus = FocusNode();
   final _scroll = ScrollController();
   final _imagePicker = ImagePicker();
   final List<ChatAttachment> _pendingAttachments = [];
+  ChatMessage? _replyingTo;
 
   @override
   void dispose() {
@@ -38,6 +41,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       File(attachment.path).delete().catchError((_) => File(attachment.path));
     }
     _input.dispose();
+    _inputFocus.dispose();
     _scroll.dispose();
     super.dispose();
   }
@@ -59,9 +63,33 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final value = _input.text.trim();
     if (value.isEmpty && _pendingAttachments.isEmpty) return;
     final attachments = List<ChatAttachment>.from(_pendingAttachments);
+    final replyToText = _replyingTo?.text.trim() ?? '';
     _input.clear();
-    setState(_pendingAttachments.clear);
-    ref.read(llmServiceProvider).send(value, attachments: attachments);
+    setState(() {
+      _pendingAttachments.clear();
+      _replyingTo = null;
+    });
+    ref
+        .read(llmServiceProvider)
+        .send(
+          value,
+          attachments: attachments,
+          replyToText: replyToText.length > 180
+              ? '${replyToText.substring(0, 180)}…'
+              : replyToText,
+        );
+  }
+
+  void _replyTo(ChatMessage message) {
+    setState(() => _replyingTo = message);
+    _inputFocus.requestFocus();
+  }
+
+  void _sendSuggestion(String value) {
+    if (ref.read(chatBusyProvider)) return;
+    _input.text = value;
+    _input.selection = TextSelection.collapsed(offset: value.length);
+    _send();
   }
 
   Future<void> _pickImage(ImageSource source) async {
@@ -200,74 +228,60 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           bottom: false,
           child: Column(
             children: [
-              Row(
-                children: [
-                  const SizedBox(width: 12),
-                  Text(
-                    l10n.pick(ru: 'Сегодня', en: 'Today', uz: 'Bugun'),
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline_rounded, size: 22),
-                    tooltip: l10n.pick(
-                      ru: 'Очистить диалог',
-                      en: 'Clear conversation',
-                      uz: 'Suhbatni tozalash',
-                    ),
-                    onPressed: messages.isEmpty
-                        ? null
-                        : () => showDialog(
-                            context: context,
-                            builder: (dialogContext) => AlertDialog(
-                              backgroundColor: const Color(0xFF141926),
-                              title: Text(
-                                l10n.pick(
-                                  ru: 'Очистить диалог?',
-                                  en: 'Clear conversation?',
-                                  uz: 'Suhbatni tozalaysizmi?',
-                                ),
-                              ),
-                              content: Text(
-                                l10n.pick(
-                                  ru: 'Вся переписка на этом устройстве будет удалена.',
-                                  en: 'This deletes the whole transcript on this device.',
-                                  uz: 'Bu qurilmadagi barcha yozishma o\'chiriladi.',
-                                ),
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(dialogContext),
-                                  child: Text(
-                                    l10n.pick(
-                                      ru: 'Отмена',
-                                      en: 'Cancel',
-                                      uz: 'Bekor qilish',
-                                    ),
-                                  ),
-                                ),
-                                TextButton(
-                                  onPressed: () {
-                                    ref.read(chatProvider.notifier).clear();
-                                    Navigator.pop(dialogContext);
-                                  },
-                                  child: Text(
-                                    l10n.pick(
-                                      ru: 'Очистить',
-                                      en: 'Clear',
-                                      uz: 'Tozalash',
-                                    ),
-                                    style: const TextStyle(
-                                      color: MilaColors.danger,
-                                    ),
-                                  ),
-                                ),
-                              ],
+              _ConversationHeader(
+                assistantName: assistantName,
+                busy: busy,
+                onVoice: () => context.push('/voice'),
+                onClear: messages.isEmpty
+                    ? null
+                    : () => showDialog(
+                        context: context,
+                        builder: (dialogContext) => AlertDialog(
+                          backgroundColor: const Color(0xFF141926),
+                          title: Text(
+                            l10n.pick(
+                              ru: 'Очистить диалог?',
+                              en: 'Clear conversation?',
+                              uz: 'Suhbatni tozalaysizmi?',
                             ),
                           ),
-                  ),
-                  const SizedBox(width: 4),
-                ],
+                          content: Text(
+                            l10n.pick(
+                              ru: 'Вся переписка на этом устройстве будет удалена.',
+                              en: 'This deletes the whole transcript on this device.',
+                              uz: 'Bu qurilmadagi barcha yozishma o\'chiriladi.',
+                            ),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(dialogContext),
+                              child: Text(
+                                l10n.pick(
+                                  ru: 'Отмена',
+                                  en: 'Cancel',
+                                  uz: 'Bekor qilish',
+                                ),
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () {
+                                ref.read(chatProvider.notifier).clear();
+                                Navigator.pop(dialogContext);
+                              },
+                              child: Text(
+                                l10n.pick(
+                                  ru: 'Очистить',
+                                  en: 'Clear',
+                                  uz: 'Tozalash',
+                                ),
+                                style: const TextStyle(
+                                  color: MilaColors.danger,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
               ),
               Expanded(
                 child: messages.isEmpty
@@ -277,17 +291,41 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
                         physics: const BouncingScrollPhysics(),
                         itemCount: messages.length,
-                        itemBuilder: (_, i) =>
-                            _MessageBubble(message: messages[i]),
+                        itemBuilder: (_, i) {
+                          final message = messages[i];
+                          final previous = i == 0 ? null : messages[i - 1];
+                          final showDate =
+                              previous == null ||
+                              !DateUtils.isSameDay(
+                                previous.createdAt,
+                                message.createdAt,
+                              );
+                          return Column(
+                            children: [
+                              if (showDate)
+                                _DateDivider(date: message.createdAt),
+                              _MessageBubble(
+                                message: message,
+                                showSuggestions:
+                                    i == messages.length - 1 && !busy,
+                                onReply: () => _replyTo(message),
+                                onSuggestion: _sendSuggestion,
+                              ),
+                            ],
+                          );
+                        },
                       ),
               ),
               _InputBar(
                 controller: _input,
+                focusNode: _inputFocus,
                 assistantName: assistantName,
                 attachments: _pendingAttachments,
+                replyingTo: _replyingTo,
                 busy: busy,
                 onAttach: _showAttachmentMenu,
                 onRemoveAttachment: _removePendingAttachment,
+                onCancelReply: () => setState(() => _replyingTo = null),
                 onSend: _send,
                 onMic: () => context.push('/voice'),
               ),
@@ -337,10 +375,294 @@ class _EmptyChat extends StatelessWidget {
   }
 }
 
+class _ConversationHeader extends StatelessWidget {
+  const _ConversationHeader({
+    required this.assistantName,
+    required this.busy,
+    required this.onVoice,
+    required this.onClear,
+  });
+
+  final String assistantName;
+  final bool busy;
+  final VoidCallback onVoice;
+  final VoidCallback? onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+      child: Row(
+        children: [
+          const _MilaAvatar(size: 42),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  assistantName,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 250),
+                      width: 7,
+                      height: 7,
+                      decoration: BoxDecoration(
+                        color: busy ? MilaColors.cyan : MilaColors.success,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: (busy ? MilaColors.cyan : MilaColors.success)
+                                .withValues(alpha: 0.45),
+                            blurRadius: 8,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      busy
+                          ? l10n.pick(
+                              ru: 'печатает…',
+                              en: 'typing…',
+                              uz: 'yozmoqda…',
+                            )
+                          : l10n.pick(
+                              ru: 'на связи',
+                              en: 'online',
+                              uz: 'aloqada',
+                            ),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: l10n.pick(
+              ru: 'Голосовой разговор',
+              en: 'Voice conversation',
+              uz: 'Ovozli suhbat',
+            ),
+            onPressed: onVoice,
+            icon: const Icon(Icons.graphic_eq_rounded, color: MilaColors.cyan),
+          ),
+          PopupMenuButton<String>(
+            tooltip: l10n.pick(ru: 'Меню', en: 'Menu', uz: 'Menyu'),
+            color: const Color(0xFF171D2B),
+            onSelected: (value) {
+              if (value == 'clear') onClear?.call();
+            },
+            itemBuilder: (_) => [
+              PopupMenuItem(
+                value: 'clear',
+                enabled: onClear != null,
+                child: Row(
+                  children: [
+                    const Icon(Icons.delete_outline_rounded, size: 19),
+                    const SizedBox(width: 10),
+                    Text(
+                      l10n.pick(
+                        ru: 'Очистить диалог',
+                        en: 'Clear conversation',
+                        uz: 'Suhbatni tozalash',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DateDivider extends StatelessWidget {
+  const _DateDivider({required this.date});
+
+  final DateTime date;
+
+  String _calendarLabel(BuildContext context) {
+    final now = DateTime.now();
+    final yesterday = now.subtract(const Duration(days: 1));
+    if (DateUtils.isSameDay(date, now)) {
+      return context.l10n.pick(ru: 'Сегодня', en: 'Today', uz: 'Bugun');
+    }
+    if (DateUtils.isSameDay(date, yesterday)) {
+      return context.l10n.pick(ru: 'Вчера', en: 'Yesterday', uz: 'Kecha');
+    }
+
+    const ruMonths = [
+      'января',
+      'февраля',
+      'марта',
+      'апреля',
+      'мая',
+      'июня',
+      'июля',
+      'августа',
+      'сентября',
+      'октября',
+      'ноября',
+      'декабря',
+    ];
+    const enMonths = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+    const uzMonths = [
+      'yanvar',
+      'fevral',
+      'mart',
+      'aprel',
+      'may',
+      'iyun',
+      'iyul',
+      'avgust',
+      'sentabr',
+      'oktabr',
+      'noyabr',
+      'dekabr',
+    ];
+    final month = context.l10n.pick(
+      ru: ruMonths[date.month - 1],
+      en: enMonths[date.month - 1],
+      uz: uzMonths[date.month - 1],
+    );
+    return '${date.day} $month';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, bottom: 16),
+      child: Row(
+        children: [
+          const Expanded(child: Divider()),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Text(
+              _calendarLabel(context),
+              style: Theme.of(context).textTheme.labelSmall,
+            ),
+          ),
+          const Expanded(child: Divider()),
+        ],
+      ),
+    );
+  }
+}
+
+class _MilaAvatar extends StatelessWidget {
+  const _MilaAvatar({this.size = 34});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: size,
+    height: size,
+    decoration: BoxDecoration(
+      gradient: MilaColors.orbGradient,
+      shape: BoxShape.circle,
+      border: Border.all(color: Colors.white.withValues(alpha: 0.42)),
+      boxShadow: [
+        BoxShadow(
+          color: MilaColors.cyan.withValues(alpha: 0.2),
+          blurRadius: 12,
+        ),
+      ],
+    ),
+    child: Container(
+      margin: EdgeInsets.all(size * 0.12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF11182A).withValues(alpha: 0.74),
+        shape: BoxShape.circle,
+      ),
+      child: Icon(Icons.auto_awesome_rounded, size: size * 0.44),
+    ),
+  );
+}
+
 class _MessageBubble extends ConsumerWidget {
-  const _MessageBubble({required this.message});
+  const _MessageBubble({
+    required this.message,
+    required this.showSuggestions,
+    required this.onReply,
+    required this.onSuggestion,
+  });
 
   final ChatMessage message;
+  final bool showSuggestions;
+  final VoidCallback onReply;
+  final ValueChanged<String> onSuggestion;
+
+  Future<void> _showMessageMenu(BuildContext context) async {
+    final l10n = context.l10n;
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.reply_rounded),
+                title: Text(
+                  l10n.pick(ru: 'Ответить', en: 'Reply', uz: 'Javob'),
+                ),
+                onTap: () => Navigator.pop(sheetContext, 'reply'),
+              ),
+              if (message.text.trim().isNotEmpty)
+                ListTile(
+                  leading: const Icon(Icons.copy_rounded),
+                  title: Text(
+                    l10n.pick(ru: 'Копировать', en: 'Copy', uz: 'Nusxalash'),
+                  ),
+                  onTap: () => Navigator.pop(sheetContext, 'copy'),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (action == 'reply') onReply();
+    if (action == 'copy') {
+      await Clipboard.setData(ClipboardData(text: message.text));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              l10n.pick(
+                ru: 'Сообщение скопировано',
+                en: 'Message copied',
+                uz: 'Xabar nusxalandi',
+              ),
+            ),
+          ),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -348,85 +670,287 @@ class _MessageBubble extends ConsumerWidget {
     final isUser = message.role == ChatRole.user;
     final time = DateFormat('h:mm a').format(message.createdAt);
 
+    final bubble = GestureDetector(
+      onLongPress: () => _showMessageMenu(context),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        decoration: BoxDecoration(
+          gradient: isUser
+              ? MilaColors.primaryGradient
+              : const LinearGradient(
+                  colors: [Color(0xFF18223A), Color(0xFF151B2B)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(18),
+            topRight: const Radius.circular(18),
+            bottomLeft: Radius.circular(isUser ? 18 : 5),
+            bottomRight: Radius.circular(isUser ? 5 : 18),
+          ),
+          border: Border.all(
+            color: isUser
+                ? MilaColors.cyan.withValues(alpha: 0.28)
+                : MilaColors.violet.withValues(alpha: 0.28),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: (isUser ? MilaColors.violet : MilaColors.cyan).withValues(
+                alpha: 0.08,
+              ),
+              blurRadius: 18,
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (message.replyToText.isNotEmpty) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(10, 7, 8, 7),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                  border: const Border(
+                    left: BorderSide(color: MilaColors.cyan, width: 2),
+                  ),
+                ),
+                child: Text(
+                  message.replyToText,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: text.bodySmall?.copyWith(color: Colors.white70),
+                ),
+              ),
+              const SizedBox(height: 9),
+            ],
+            if (message.text.isEmpty && !isUser)
+              const SizedBox(width: 38, child: _TypingDots())
+            else
+              Text(message.text, style: text.bodyMedium),
+            if (message.attachments.isNotEmpty) ...[
+              if (message.text.isNotEmpty) const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final attachment in message.attachments)
+                    _AttachmentPreview(attachment: attachment),
+                ],
+              ),
+            ],
+            const SizedBox(height: 5),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (message.viaVoice) ...[
+                  Icon(
+                    Icons.graphic_eq_rounded,
+                    size: 12,
+                    color: isUser ? Colors.white70 : MilaColors.textTertiary,
+                  ),
+                  const SizedBox(width: 4),
+                ],
+                Text(
+                  time,
+                  style: text.labelSmall?.copyWith(
+                    fontSize: 10,
+                    color: isUser ? Colors.white70 : MilaColors.textTertiary,
+                  ),
+                ),
+                if (isUser) ...[
+                  const SizedBox(width: 4),
+                  Icon(
+                    switch (message.deliveryStatus) {
+                      ChatDeliveryStatus.sending => Icons.schedule_rounded,
+                      ChatDeliveryStatus.failed => Icons.error_outline_rounded,
+                      ChatDeliveryStatus.sent => Icons.check_rounded,
+                      ChatDeliveryStatus.delivered => Icons.done_all_rounded,
+                    },
+                    size: 14,
+                    color: message.deliveryStatus == ChatDeliveryStatus.failed
+                        ? MilaColors.danger
+                        : MilaColors.cyan,
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 14),
       child: Column(
         crossAxisAlignment: isUser
             ? CrossAxisAlignment.end
             : CrossAxisAlignment.start,
         children: [
-          ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: MediaQuery.sizeOf(context).width * 0.82,
-            ),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-              decoration: BoxDecoration(
-                gradient: isUser ? MilaColors.primaryGradient : null,
-                color: isUser ? null : const Color(0xFF161C2B),
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(16),
-                  topRight: const Radius.circular(16),
-                  bottomLeft: Radius.circular(isUser ? 16 : 4),
-                  bottomRight: Radius.circular(isUser ? 4 : 16),
-                ),
-                border: isUser
-                    ? null
-                    : Border.all(color: MilaColors.cardBorder),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (message.text.isEmpty && !isUser)
-                    const SizedBox(width: 34, child: _TypingDots())
-                  else
-                    Text(message.text, style: text.bodyMedium),
-                  if (message.attachments.isNotEmpty) ...[
-                    if (message.text.isNotEmpty) const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final attachment in message.attachments)
-                          _AttachmentPreview(attachment: attachment),
-                      ],
-                    ),
-                  ],
-                  const SizedBox(height: 4),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (message.viaVoice) ...[
-                        Icon(
-                          Icons.graphic_eq_rounded,
-                          size: 11,
-                          color: isUser
-                              ? Colors.white70
-                              : MilaColors.textTertiary,
-                        ),
-                        const SizedBox(width: 4),
-                      ],
-                      Text(
-                        time,
-                        style: text.labelSmall?.copyWith(
-                          fontSize: 10,
-                          color: isUser
-                              ? Colors.white70
-                              : MilaColors.textTertiary,
-                        ),
-                      ),
-                    ],
+          Row(
+            mainAxisAlignment: isUser
+                ? MainAxisAlignment.end
+                : MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (!isUser) ...[const _MilaAvatar(), const SizedBox(width: 9)],
+              Flexible(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: MediaQuery.sizeOf(context).width * 0.78,
                   ),
-                ],
+                  child: bubble,
+                ),
               ),
-            ),
+            ],
           ),
+          for (final card in message.cards)
+            Padding(
+              padding: EdgeInsets.only(top: 10, left: isUser ? 0 : 43),
+              child: _RichMessageCard(card: card),
+            ),
           // Structured action cards proposed by the assistant.
           for (final action in message.actions)
             Padding(
-              padding: const EdgeInsets.only(top: 8),
+              padding: EdgeInsets.only(top: 10, left: isUser ? 0 : 43),
               child: _ActionCard(messageId: message.id, action: action),
             ),
+          if (showSuggestions && message.suggestions.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 10, left: 43),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final suggestion in message.suggestions)
+                    ActionChip(
+                      label: Text(suggestion),
+                      avatar: const Icon(Icons.arrow_outward_rounded, size: 15),
+                      onPressed: () => onSuggestion(suggestion),
+                      side: BorderSide(
+                        color: MilaColors.cyan.withValues(alpha: 0.28),
+                      ),
+                      backgroundColor: const Color(0xFF151C2C),
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RichMessageCard extends StatelessWidget {
+  const _RichMessageCard({required this.card});
+
+  final ChatRichCard card;
+
+  Color get _accent => switch (card.accent) {
+    'cyan' => MilaColors.cyan,
+    'pink' => MilaColors.pink,
+    'green' => MilaColors.success,
+    _ => MilaColors.violet,
+  };
+
+  IconData get _icon => switch (card.type) {
+    ChatCardType.task => Icons.task_alt_rounded,
+    ChatCardType.reminder => Icons.notifications_active_outlined,
+    ChatCardType.progress => Icons.insights_rounded,
+    ChatCardType.report => Icons.analytics_outlined,
+    ChatCardType.info => Icons.auto_awesome_rounded,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = _accent;
+    return Container(
+      width: double.infinity,
+      constraints: const BoxConstraints(maxWidth: 420),
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF17223A), Color(0xFF111827)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: accent.withValues(alpha: 0.44)),
+        boxShadow: [
+          BoxShadow(color: accent.withValues(alpha: 0.1), blurRadius: 20),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              TileIcon(icon: _icon, color: accent, size: 36),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      card.title,
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    if (card.subtitle.isNotEmpty)
+                      Text(
+                        card.subtitle,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                  ],
+                ),
+              ),
+              if (card.metric.isNotEmpty)
+                Text(
+                  card.metric,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: accent,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+            ],
+          ),
+          if (card.progress != null) ...[
+            const SizedBox(height: 13),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(3),
+              child: LinearProgressIndicator(
+                value: card.progress,
+                minHeight: 6,
+                backgroundColor: Colors.white.withValues(alpha: 0.07),
+                valueColor: AlwaysStoppedAnimation(accent),
+              ),
+            ),
+          ],
+          if (card.items.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            for (final item in card.items)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 7),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: CircleAvatar(radius: 2.5, backgroundColor: accent),
+                    ),
+                    const SizedBox(width: 9),
+                    Expanded(
+                      child: Text(
+                        item,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: MilaColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
         ],
       ),
     );
@@ -557,21 +1081,27 @@ class _ActionCard extends ConsumerWidget {
 class _InputBar extends StatelessWidget {
   const _InputBar({
     required this.controller,
+    required this.focusNode,
     required this.assistantName,
     required this.attachments,
+    required this.replyingTo,
     required this.busy,
     required this.onAttach,
     required this.onRemoveAttachment,
+    required this.onCancelReply,
     required this.onSend,
     required this.onMic,
   });
 
   final TextEditingController controller;
+  final FocusNode focusNode;
   final String assistantName;
   final List<ChatAttachment> attachments;
+  final ChatMessage? replyingTo;
   final bool busy;
   final VoidCallback onAttach;
   final ValueChanged<String> onRemoveAttachment;
+  final VoidCallback onCancelReply;
   final VoidCallback onSend;
   final VoidCallback onMic;
 
@@ -587,6 +1117,56 @@ class _InputBar extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (replyingTo != null) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF151C2C),
+                borderRadius: BorderRadius.circular(10),
+                border: const Border(
+                  left: BorderSide(color: MilaColors.cyan, width: 3),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          replyingTo!.role == ChatRole.user
+                              ? context.l10n.pick(
+                                  ru: 'Ответ себе',
+                                  en: 'Reply to yourself',
+                                  uz: 'O\'zingizga javob',
+                                )
+                              : context.l10n.pick(
+                                  ru: 'Ответ MILA',
+                                  en: 'Reply to MILA',
+                                  uz: 'MILAga javob',
+                                ),
+                          style: Theme.of(context).textTheme.labelMedium
+                              ?.copyWith(color: MilaColors.cyan),
+                        ),
+                        Text(
+                          replyingTo!.text,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: onCancelReply,
+                    icon: const Icon(Icons.close_rounded, size: 19),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
           if (attachments.isNotEmpty) ...[
             SizedBox(
               height: 62,
@@ -616,6 +1196,10 @@ class _InputBar extends StatelessWidget {
               Expanded(
                 child: TextField(
                   controller: controller,
+                  focusNode: focusNode,
+                  minLines: 1,
+                  maxLines: 5,
+                  textCapitalization: TextCapitalization.sentences,
                   textInputAction: TextInputAction.send,
                   onSubmitted: (_) => onSend(),
                   decoration: InputDecoration(

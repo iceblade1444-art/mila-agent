@@ -15,6 +15,40 @@ import 'package:mila/services/storage/stores.dart';
 class _RenderStore implements LocalStore {
   final _maps = <String, Map<String, dynamic>>{};
   final _strings = <String, String>{};
+  final _lists = <String, List<Map<String, dynamic>>>{
+    'chat': [
+      ChatMessage(
+        id: 'render-user',
+        role: ChatRole.user,
+        text: 'Show me today\'s launch progress.',
+        createdAt: DateTime(2026, 7, 31, 9, 41),
+        deliveryStatus: ChatDeliveryStatus.delivered,
+      ).toJson(),
+      ChatMessage(
+        id: 'render-mila',
+        role: ChatRole.assistant,
+        text: 'The launch is on track. Three important items remain.',
+        createdAt: DateTime(2026, 7, 31, 9, 41),
+        cards: [
+          ChatRichCard(
+            id: 'render-card',
+            type: ChatCardType.progress,
+            title: 'Launch readiness',
+            subtitle: 'Agentic OS production',
+            metric: '82%',
+            progress: 0.82,
+            accent: 'cyan',
+            items: [
+              'Core services are online',
+              'Mobile account is connected',
+              'Final notification sync is pending',
+            ],
+          ),
+        ],
+        suggestions: const ['Open remaining tasks', 'Ask Hermes for a report'],
+      ).toJson(),
+    ],
+  };
 
   @override
   Future<void> delete(String key) async {
@@ -23,7 +57,7 @@ class _RenderStore implements LocalStore {
   }
 
   @override
-  List<Map<String, dynamic>> readList(String key) => const [];
+  List<Map<String, dynamic>> readList(String key) => _lists[key] ?? const [];
 
   @override
   Map<String, dynamic>? readMap(String key) => _maps[key];
@@ -59,10 +93,9 @@ void main() {
   ) async {
     await tester.binding.setSurfaceSize(const Size(412, 915));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    final key = GlobalKey();
     final store = _RenderStore();
 
-    Widget app(Widget child) => ProviderScope(
+    Widget app(Widget child, GlobalKey key) => ProviderScope(
       overrides: [localStoreProvider.overrideWithValue(store)],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
@@ -71,12 +104,15 @@ void main() {
       ),
     );
 
-    await tester.pumpWidget(app(const AssistantSetupScreen()));
-    await capture(tester, key, 'screen_assistant_setup');
+    final setupKey = GlobalKey();
+    await tester.pumpWidget(app(const AssistantSetupScreen(), setupKey));
+    await capture(tester, setupKey, 'screen_assistant_setup');
 
-    await tester.pumpWidget(app(const ChatScreen()));
-    await capture(tester, key, 'screen_multimodal_chat');
+    final chatKey = GlobalKey();
+    await tester.pumpWidget(app(const ChatScreen(), chatKey));
+    await capture(tester, chatKey, 'screen_multimodal_chat');
 
+    final tasksKey = GlobalKey();
     await tester.pumpWidget(
       ProviderScope(
         key: const ValueKey('agentic-task-render'),
@@ -113,10 +149,10 @@ void main() {
         child: MaterialApp(
           debugShowCheckedModeBanner: false,
           theme: ThemeData.dark(useMaterial3: true),
-          home: RepaintBoundary(key: key, child: const TasksScreen()),
+          home: RepaintBoundary(key: tasksKey, child: const TasksScreen()),
         ),
       ),
     );
-    await capture(tester, key, 'screen_agentic_tasks');
+    await capture(tester, tasksKey, 'screen_agentic_tasks');
   });
 }

@@ -27,6 +27,20 @@ class ActionExecutionResult {
   final String message;
 }
 
+class ChatPresentation {
+  const ChatPresentation({
+    required this.text,
+    this.actions = const [],
+    this.cards = const [],
+    this.suggestions = const [],
+  });
+
+  final String text;
+  final List<MilaAction> actions;
+  final List<ChatRichCard> cards;
+  final List<String> suggestions;
+}
+
 /// Orchestrates text conversations: builds the system prompt from the
 /// user's memory vault and personality settings, streams tokens from the
 /// active provider into the chat store, and extracts structured actions
@@ -192,7 +206,31 @@ Use save_memory whenever the user shares a stable fact about themselves
 (name, people, preferences, work) that is not already in your memory list;
 category is one of people|preferences|facts.
 Only include the block when there is a concrete action. Never mention the
-block itself in your prose.''');
+block itself in your prose.
+
+When structured information would be clearer than prose, append one optional
+fenced `cards` JSON array. Use only facts already present in the conversation
+or returned by a connected tool. Never invent live weather, prices, analytics,
+deadlines or task status just to fill a card.
+
+```cards
+[{"type":"report","title":"Trend research complete","subtitle":"Scout · today","metric":"12 findings","items":["3 high-confidence opportunities","Report saved to Knowledge"],"accent":"cyan"},
+ {"type":"progress","title":"Campaign preparation","subtitle":"Reach","metric":"68%","progress":0.68,"items":["Brief approved","Creative generation running"],"accent":"violet"}]
+```
+
+Allowed card types: info, task, reminder, progress, report. Keep at most three
+cards and six short items per card.
+
+When a natural next turn exists, append an optional `suggestions` JSON array
+with two or three short user replies:
+
+```suggestions
+["Show the report","Create a task","Remind me tomorrow"]
+```
+
+Do not include suggestions for errors, sensitive confirmations, or when a
+clarifying question already requires a free-form answer. Never mention these
+structured blocks in your prose.''');
     }
     return buffer.toString();
   }
@@ -203,6 +241,7 @@ block itself in your prose.''');
     String text, {
     bool viaVoice = false,
     List<ChatAttachment> attachments = const [],
+    String replyToText = '',
   }) async {
     final chat = _ref.read(chatProvider.notifier);
     final busy = _ref.read(chatBusyProvider.notifier);
@@ -213,10 +252,16 @@ block itself in your prose.''');
         text: text,
         attachments: attachments,
         viaVoice: viaVoice,
+        deliveryStatus: ChatDeliveryStatus.sent,
+        replyToText: replyToText,
       ),
     );
 
-    final assistant = ChatMessage(role: ChatRole.assistant, text: '');
+    final assistant = ChatMessage(
+      role: ChatRole.assistant,
+      text: '',
+      deliveryStatus: ChatDeliveryStatus.sending,
+    );
     chat.add(assistant);
     busy.state = true;
 
@@ -273,11 +318,11 @@ block itself in your prose.''');
         chat.appendText(assistant.id, delta);
       }
 
-      final (clean, actions) = extractActions(full.toString());
+      final presentation = extractPresentation(full.toString());
       // Memory updates are local and harmless: apply them silently when
       // auto-memory is on (the card still shows what was saved).
       if (_ref.read(settingsProvider).autoMemory) {
-        for (final action in actions.where(
+        for (final action in presentation.actions.where(
           (a) => a.type == ActionType.saveMemory,
         )) {
           _saveMemoryAction(action);
@@ -288,9 +333,12 @@ block itself in your prose.''');
         ChatMessage(
           id: assistant.id,
           role: ChatRole.assistant,
-          text: clean,
+          text: presentation.text,
           createdAt: assistant.createdAt,
-          actions: actions,
+          actions: presentation.actions,
+          cards: presentation.cards,
+          suggestions: presentation.suggestions,
+          deliveryStatus: ChatDeliveryStatus.delivered,
         ),
       );
       return assistant.id;
@@ -301,6 +349,7 @@ block itself in your prose.''');
           role: ChatRole.assistant,
           text: '⚠️ ${e.message}',
           createdAt: assistant.createdAt,
+          deliveryStatus: ChatDeliveryStatus.failed,
         ),
       );
       return null;
@@ -311,6 +360,7 @@ block itself in your prose.''');
           role: ChatRole.assistant,
           text: '⚠️ Something went wrong: $e',
           createdAt: assistant.createdAt,
+          deliveryStatus: ChatDeliveryStatus.failed,
         ),
       );
       return null;
@@ -343,6 +393,80 @@ block itself in your prose.''');
     } catch (_) {
       return (clean, <MilaAction>[]);
     }
+  }
+
+  static ChatPresentation extractPresentation(String raw) {
+    final (withoutActions, actions) = extractActions(raw);
+    var clean = withoutActions;
+    final cards = <ChatRichCard>[];
+    final suggestions = <String>[];
+
+    final cardsMatch = RegExp(
+      r'```cards\s*([\s\S]*?)```',
+      multiLine: true,
+    ).firstMatch(clean);
+    if (cardsMatch != null) {
+      clean = clean.replaceRange(cardsMatch.start, cardsMatch.end, '').trim();
+      try {
+        final decoded = jsonDecode(cardsMatch.group(1)!.trim()) as List;
+        for (final value in decoded.take(3)) {
+          final map = (value as Map).cast<String, dynamic>();
+          final title = map['title']?.toString().trim() ?? '';
+          if (title.isEmpty) continue;
+          cards.add(
+            ChatRichCard(
+              type: ChatCardType.values.firstWhere(
+                (type) => type.name == map['type'],
+                orElse: () => ChatCardType.info,
+              ),
+              title: title,
+              subtitle: map['subtitle']?.toString() ?? '',
+              metric: map['metric']?.toString() ?? '',
+              progress: switch (map['progress']) {
+                final num value => value.toDouble().clamp(0.0, 1.0).toDouble(),
+                _ => null,
+              },
+              items: ((map['items'] as List?) ?? [])
+                  .map((item) => item.toString().trim())
+                  .where((item) => item.isNotEmpty)
+                  .take(6)
+                  .toList(),
+              accent: map['accent']?.toString() ?? 'violet',
+            ),
+          );
+        }
+      } catch (_) {
+        cards.clear();
+      }
+    }
+
+    final suggestionsMatch = RegExp(
+      r'```suggestions\s*([\s\S]*?)```',
+      multiLine: true,
+    ).firstMatch(clean);
+    if (suggestionsMatch != null) {
+      clean = clean
+          .replaceRange(suggestionsMatch.start, suggestionsMatch.end, '')
+          .trim();
+      try {
+        final decoded = jsonDecode(suggestionsMatch.group(1)!.trim()) as List;
+        suggestions.addAll(
+          decoded
+              .map((value) => value.toString().trim())
+              .where((value) => value.isNotEmpty && value.length <= 80)
+              .take(3),
+        );
+      } catch (_) {
+        suggestions.clear();
+      }
+    }
+
+    return ChatPresentation(
+      text: clean,
+      actions: actions,
+      cards: cards,
+      suggestions: suggestions,
+    );
   }
 
   /// Executes an approved action. Hermes tasks go to the shared Agentic OS

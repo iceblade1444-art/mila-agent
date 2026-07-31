@@ -156,7 +156,11 @@ class ChatController extends StateNotifier<List<ChatMessage>> {
             createdAt: m.createdAt,
             actions: m.actions,
             attachments: m.attachments,
+            cards: m.cards,
+            suggestions: m.suggestions,
             viaVoice: m.viaVoice,
+            deliveryStatus: m.deliveryStatus,
+            replyToText: m.replyToText,
           ))
         else
           m,
@@ -166,6 +170,29 @@ class ChatController extends StateNotifier<List<ChatMessage>> {
 
   void replace(ChatMessage message) {
     state = [for (final m in state) m.id == message.id ? message : m];
+    _persist();
+  }
+
+  void setDeliveryStatus(String id, ChatDeliveryStatus status) {
+    state = [
+      for (final message in state)
+        if (message.id == id)
+          ChatMessage(
+            id: message.id,
+            role: message.role,
+            text: message.text,
+            createdAt: message.createdAt,
+            actions: message.actions,
+            attachments: message.attachments,
+            cards: message.cards,
+            suggestions: message.suggestions,
+            viaVoice: message.viaVoice,
+            deliveryStatus: status,
+            replyToText: message.replyToText,
+          )
+        else
+          message,
+    ];
     _persist();
   }
 

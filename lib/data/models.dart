@@ -6,6 +6,65 @@ enum ChatRole { user, assistant }
 
 enum ChatAttachmentType { image, file }
 
+enum ChatDeliveryStatus { sending, sent, delivered, failed }
+
+enum ChatCardType { info, task, reminder, progress, report }
+
+class ChatRichCard {
+  ChatRichCard({
+    String? id,
+    required this.type,
+    required this.title,
+    this.subtitle = '',
+    this.metric = '',
+    this.progress,
+    List<String>? items,
+    this.accent = 'violet',
+  }) : id = id ?? _uuid.v4(),
+       items = items ?? [];
+
+  final String id;
+  final ChatCardType type;
+  final String title;
+  final String subtitle;
+  final String metric;
+  final double? progress;
+  final List<String> items;
+  final String accent;
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'type': type.name,
+    'title': title,
+    'subtitle': subtitle,
+    'metric': metric,
+    if (progress != null) 'progress': progress,
+    'items': items,
+    'accent': accent,
+  };
+
+  factory ChatRichCard.fromJson(Map<String, dynamic> json) => ChatRichCard(
+    id: json['id'] as String?,
+    type: ChatCardType.values.firstWhere(
+      (type) => type.name == json['type'],
+      orElse: () => ChatCardType.info,
+    ),
+    title: json['title'] as String? ?? '',
+    subtitle: json['subtitle'] as String? ?? '',
+    metric: json['metric']?.toString() ?? '',
+    progress: switch (json['progress']) {
+      final num value => value.toDouble().clamp(0.0, 1.0).toDouble(),
+      _ => null,
+    },
+    items: ((json['items'] as List?) ?? [])
+        .map((item) => item.toString())
+        .where((item) => item.trim().isNotEmpty)
+        .take(6)
+        .toList(),
+    accent: json['accent'] as String? ?? 'violet',
+  );
+}
+
 class ChatAttachment {
   ChatAttachment({
     String? id,
@@ -114,11 +173,17 @@ class ChatMessage {
     DateTime? createdAt,
     List<MilaAction>? actions,
     List<ChatAttachment>? attachments,
+    List<ChatRichCard>? cards,
+    List<String>? suggestions,
     this.viaVoice = false,
+    this.deliveryStatus = ChatDeliveryStatus.delivered,
+    this.replyToText = '',
   }) : id = id ?? _uuid.v4(),
        createdAt = createdAt ?? DateTime.now(),
        actions = actions ?? [],
-       attachments = attachments ?? [];
+       attachments = attachments ?? [],
+       cards = cards ?? [],
+       suggestions = suggestions ?? [];
 
   final String id;
   final ChatRole role;
@@ -126,7 +191,11 @@ class ChatMessage {
   final DateTime createdAt;
   final List<MilaAction> actions;
   final List<ChatAttachment> attachments;
+  final List<ChatRichCard> cards;
+  final List<String> suggestions;
   final bool viaVoice;
+  final ChatDeliveryStatus deliveryStatus;
+  final String replyToText;
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -137,7 +206,11 @@ class ChatMessage {
     'attachments': attachments
         .map((attachment) => attachment.toJson())
         .toList(),
+    'cards': cards.map((card) => card.toJson()).toList(),
+    'suggestions': suggestions,
     'viaVoice': viaVoice,
+    'deliveryStatus': deliveryStatus.name,
+    'replyToText': replyToText,
   };
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
@@ -155,7 +228,21 @@ class ChatMessage {
           ),
         )
         .toList(),
+    cards: ((json['cards'] as List?) ?? [])
+        .map(
+          (card) =>
+              ChatRichCard.fromJson((card as Map).cast<String, dynamic>()),
+        )
+        .toList(),
+    suggestions: ((json['suggestions'] as List?) ?? [])
+        .map((suggestion) => suggestion.toString())
+        .toList(),
     viaVoice: json['viaVoice'] as bool? ?? false,
+    deliveryStatus: ChatDeliveryStatus.values.firstWhere(
+      (status) => status.name == json['deliveryStatus'],
+      orElse: () => ChatDeliveryStatus.delivered,
+    ),
+    replyToText: json['replyToText'] as String? ?? '',
   );
 }
 
