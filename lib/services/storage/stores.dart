@@ -173,6 +173,24 @@ class ChatController extends StateNotifier<List<ChatMessage>> {
     _persist();
   }
 
+  void mergeRemote(Iterable<ChatMessage> messages) {
+    final byId = <String, ChatMessage>{
+      for (final message in state) message.id: message,
+    };
+    for (final message in messages) {
+      final local = byId[message.id];
+      if (local == null) {
+        byId[message.id] = message;
+      } else if (local.text.isEmpty && message.text.isNotEmpty) {
+        byId[message.id] = message;
+      }
+    }
+    state = byId.values.toList()
+      ..sort((left, right) => left.createdAt.compareTo(right.createdAt));
+    if (state.length > 500) state = state.sublist(state.length - 500);
+    _persist();
+  }
+
   void setDeliveryStatus(String id, ChatDeliveryStatus status) {
     state = [
       for (final message in state)

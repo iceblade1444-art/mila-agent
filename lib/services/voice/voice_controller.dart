@@ -9,6 +9,7 @@ import 'package:record/record.dart';
 
 import '../../core/config/app_config.dart';
 import '../../data/models.dart';
+import '../agentic/agentic_os_service.dart';
 import '../llm/llm_service.dart';
 import '../storage/stores.dart';
 import 'gemini_live_client.dart';
@@ -488,6 +489,7 @@ class VoiceController extends StateNotifier<VoiceState> {
         );
     _sessionTranscript.add('${isUser ? 'User' : 'Assistant'}: $text');
     _liveKitCommitted.add(message.id);
+    _ref.read(chatSyncProvider.notifier).schedule();
   }
 
   Future<({String apiKey, String accessToken})> _liveCredentials() async {
@@ -845,6 +847,7 @@ class VoiceController extends StateNotifier<VoiceState> {
         );
     _sessionTranscript.add('User: ${_userText.trim()}');
     _userCommitted = true;
+    _ref.read(chatSyncProvider.notifier).schedule();
   }
 
   void _commitTranscripts({bool force = false}) {
@@ -860,6 +863,7 @@ class VoiceController extends StateNotifier<VoiceState> {
             ),
           );
       _sessionTranscript.add('Assistant: ${_assistantText.trim()}');
+      _ref.read(chatSyncProvider.notifier).schedule();
     }
     _userText = '';
     _assistantText = '';

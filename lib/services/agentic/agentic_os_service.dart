@@ -42,12 +42,16 @@ class AgenticOsService {
   }
 
   Future<bool> isConnected() async {
-    final token =
-        await _ref
-            .read(secureStoreProvider)
-            .read(SecureStore.agenticOsAccessToken) ??
-        '';
-    return token.isNotEmpty;
+    try {
+      final token =
+          await _ref
+              .read(secureStoreProvider)
+              .read(SecureStore.agenticOsAccessToken) ??
+          '';
+      return token.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> syncPersonalOnboarding(AppSettings settings) async {
@@ -180,6 +184,69 @@ class AgenticOsService {
     await _request(
       'DELETE',
       '/api/member/notes/${Uri.encodeComponent(id)}',
+      client: client,
+    );
+  }
+
+  Future<List<ChatMessage>> syncChat(
+    List<ChatMessage> messages, {
+    http.Client? client,
+  }) async {
+    final syncedAt = DateTime.now().toUtc().toIso8601String();
+    final json = await _request(
+      'POST',
+      '/api/member/chat/sync',
+      body: {
+        'messages': messages
+            .where((message) => !message.id.startsWith('inbox:'))
+            .take(500)
+            .map(
+              (message) => {
+                'id': message.id,
+                'role': message.role.name,
+                'text': message.text,
+                'source': message.viaVoice ? 'voice' : 'mobile',
+                'viaVoice': message.viaVoice,
+                'replyToText': message.replyToText,
+                'createdAt': message.createdAt.toUtc().toIso8601String(),
+                'updatedAt': syncedAt,
+              },
+            )
+            .toList(),
+      },
+      client: client,
+    );
+    return ((json['messages'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((value) => ChatMessage.fromJson(value.cast<String, dynamic>()))
+        .where((message) => message.text.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  Future<void> clearChat({http.Client? client}) async {
+    await _request('DELETE', '/api/member/chat', client: client);
+  }
+
+  Future<List<AgenticInboxItem>> unreadInbox({http.Client? client}) async {
+    final json = await _request(
+      'GET',
+      '/api/member/inbox?status=unread&limit=50',
+      client: client,
+    );
+    return ((json['items'] as List?) ?? const [])
+        .whereType<Map>()
+        .map(
+          (value) => AgenticInboxItem.fromJson(value.cast<String, dynamic>()),
+        )
+        .where((item) => item.id.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  Future<void> markInboxRead(String id, {http.Client? client}) async {
+    await _request(
+      'PATCH',
+      '/api/member/inbox/${Uri.encodeComponent(id)}',
+      body: {'status': 'read'},
       client: client,
     );
   }
@@ -324,6 +391,43 @@ class AgenticOsService {
     } catch (_) {
       return const {};
     }
+  }
+}
+
+class AgenticInboxItem {
+  const AgenticInboxItem({
+    required this.id,
+    required this.title,
+    required this.body,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String title;
+  final String body;
+  final DateTime createdAt;
+
+  factory AgenticInboxItem.fromJson(Map<String, dynamic> json) =>
+      AgenticInboxItem(
+        id: json['id'] as String? ?? '',
+        title: json['title'] as String? ?? '',
+        body: json['body'] as String? ?? '',
+        createdAt:
+            DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
+            DateTime.now(),
+      );
+
+  ChatMessage asChatMessage() {
+    final text = [title, body]
+        .map((value) => value.trim())
+        .where((value) => value.isNotEmpty)
+        .join('\n\n');
+    return ChatMessage(
+      id: 'inbox:$id',
+      role: ChatRole.assistant,
+      text: text,
+      createdAt: createdAt,
+    );
   }
 }
 
@@ -639,6 +743,70 @@ class AgenticTasksController extends StateNotifier<AgenticTasksState> {
 final agenticOsServiceProvider = Provider<AgenticOsService>(
   (ref) => AgenticOsService(ref),
 );
+
+class ChatSyncState {
+  const ChatSyncState({this.syncing = false, this.error = '', this.syncedAt});
+  final bool syncing;
+  final String error;
+  final DateTime? syncedAt;
+}
+
+class ChatSyncController extends StateNotifier<ChatSyncState> {
+  ChatSyncController(this._ref) : super(const ChatSyncState());
+  final Ref _ref;
+  Timer? _debounce;
+
+  void schedule() {
+    _debounce?.cancel();
+    _debounce = Timer(
+      const Duration(milliseconds: 700),
+      () => unawaited(sync()),
+    );
+  }
+
+  Future<void> sync() async {
+    if (state.syncing) {
+      schedule();
+      return;
+    }
+    final service = _ref.read(agenticOsServiceProvider);
+    if (!await service.isConnected()) return;
+    state = const ChatSyncState(syncing: true);
+    try {
+      final remote = await service.syncChat(_ref.read(chatProvider));
+      final inbox = await service.unreadInbox();
+      _ref.read(chatProvider.notifier).mergeRemote([
+        ...remote,
+        ...inbox.map((item) => item.asChatMessage()),
+      ]);
+      await Future.wait(inbox.map((item) => service.markInboxRead(item.id)));
+      state = ChatSyncState(syncedAt: DateTime.now());
+    } on AgenticOsException catch (error) {
+      state = ChatSyncState(error: error.message);
+    }
+  }
+
+  Future<void> clearRemote() async {
+    final service = _ref.read(agenticOsServiceProvider);
+    if (!await service.isConnected()) return;
+    try {
+      await service.clearChat();
+    } on AgenticOsException catch (error) {
+      state = ChatSyncState(error: error.message);
+    }
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    super.dispose();
+  }
+}
+
+final chatSyncProvider =
+    StateNotifierProvider<ChatSyncController, ChatSyncState>(
+      ChatSyncController.new,
+    );
 
 final agenticTasksProvider =
     StateNotifierProvider<AgenticTasksController, AgenticTasksState>(

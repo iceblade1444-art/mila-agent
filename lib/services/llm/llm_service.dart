@@ -366,6 +366,7 @@ structured blocks in your prose.''');
       return null;
     } finally {
       busy.state = false;
+      _ref.read(chatSyncProvider.notifier).schedule();
     }
   }
 

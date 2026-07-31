@@ -16,6 +16,7 @@ import '../../core/widgets/common.dart';
 import '../../core/widgets/voice_orb.dart';
 import '../../data/models.dart';
 import '../../services/llm/llm_service.dart';
+import '../../services/agentic/agentic_os_service.dart';
 import '../../services/storage/stores.dart';
 import 'approval_sheet.dart';
 
@@ -34,6 +35,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _imagePicker = ImagePicker();
   final List<ChatAttachment> _pendingAttachments = [];
   ChatMessage? _replyingTo;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(() => ref.read(chatSyncProvider.notifier).sync());
+  }
 
   @override
   void dispose() {
@@ -266,6 +273,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             TextButton(
                               onPressed: () {
                                 ref.read(chatProvider.notifier).clear();
+                                ref
+                                    .read(chatSyncProvider.notifier)
+                                    .clearRemote();
                                 Navigator.pop(dialogContext);
                               },
                               child: Text(
