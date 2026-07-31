@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/i18n/mila_localizations.dart';
@@ -13,6 +14,7 @@ import '../../services/auth/google_auth_service.dart';
 import '../../services/soul/soul_service.dart';
 import '../../services/storage/stores.dart';
 import '../../services/update/update_service.dart';
+import '../../services/push/push_notification_service.dart';
 
 /// Profile & Settings (design screen 15).
 class SettingsScreen extends ConsumerWidget {
@@ -492,17 +494,44 @@ class SettingsScreen extends ConsumerWidget {
                 en: 'Notifications',
                 uz: 'Bildirishnomalar',
               ),
-              onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    l10n.pick(
-                      ru: 'Доступ к уведомлениям управляется в настройках системы.',
-                      en: 'Manage notification access in system settings.',
-                      uz: 'Bildirishnoma ruxsatlari tizim sozlamalarida boshqariladi.',
+              onTap: () async {
+                var enabled = false;
+                try {
+                  enabled = await ref
+                      .read(pushNotificationProvider)
+                      .registerCurrentDevice();
+                } on Object {
+                  enabled = false;
+                }
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      enabled
+                          ? l10n.pick(
+                              ru: 'Уведомления MILA включены.',
+                              en: 'MILA notifications are enabled.',
+                              uz: 'MILA bildirishnomalari yoqildi.',
+                            )
+                          : l10n.pick(
+                              ru: 'Разрешите уведомления в настройках системы.',
+                              en: 'Allow notifications in system settings.',
+                              uz: 'Tizim sozlamalarida bildirishnomalarga ruxsat bering.',
+                            ),
                     ),
+                    action: enabled
+                        ? null
+                        : SnackBarAction(
+                            label: l10n.pick(
+                              ru: 'Настройки',
+                              en: 'Settings',
+                              uz: 'Sozlamalar',
+                            ),
+                            onPressed: openAppSettings,
+                          ),
                   ),
-                ),
-              ),
+                );
+              },
             ),
             tile(
               icon: Icons.language_rounded,
@@ -549,6 +578,9 @@ class SettingsScreen extends ConsumerWidget {
               danger: true,
               onPressed: () async {
                 unawaited(ref.read(googleAuthServiceProvider).signOut());
+                await ref
+                    .read(pushNotificationProvider)
+                    .unregisterCurrentDevice();
                 final secure = ref.read(secureStoreProvider);
                 await secure.write(SecureStore.agenticOsAccessToken, '');
                 await secure.write(SecureStore.agenticOsAccountRole, '');

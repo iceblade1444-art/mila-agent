@@ -14,6 +14,7 @@ currently disabled.
 | Home Dashboard + suggestions (05) | ✅ |
 | Voice assistant: idle / listening / thinking / speaking (06–09) | ✅ Gemini Live, acoustic echo protection, live camera vision |
 | Chat transcript + AI action cards (09–10) | ✅ streaming, photos, camera and document attachments |
+| Personal Inbox push notifications | ✅ account-scoped FCM transport with server sync |
 | Command Center shortcuts (11) | ✅ |
 | Tasks & Automations (12) | ✅ Hermes Kanban sync; local fallback before pairing |
 | Memory Vault (13) | ✅ Obsidian sync; injected into text and voice prompts |

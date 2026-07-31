@@ -14,6 +14,7 @@ import '../../services/auth/mila_account_service.dart';
 import '../../services/agentic/agentic_os_service.dart';
 import '../../services/soul/soul_service.dart';
 import '../../services/storage/stores.dart';
+import '../../services/push/push_notification_service.dart';
 
 /// Uses the same Agentic OS account as the web application.
 class SignInScreen extends ConsumerStatefulWidget {
@@ -176,6 +177,11 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
           .syncPersonalOnboarding(ref.read(settingsProvider));
     } on AgenticOsException {
       // Authentication succeeded; a later profile sync can retry SOUL.md.
+    }
+    try {
+      await ref.read(pushNotificationProvider).registerCurrentDevice();
+    } on Object {
+      // Push can be enabled later without blocking a successful sign-in.
     }
     if (!mounted) return;
     context.go(

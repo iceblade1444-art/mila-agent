@@ -251,6 +251,37 @@ class AgenticOsService {
     );
   }
 
+  Future<void> registerPushDevice({
+    required String deviceId,
+    required String token,
+    required String platform,
+    required String locale,
+    http.Client? client,
+  }) async {
+    await _request(
+      'POST',
+      '/api/member/push/devices',
+      body: {
+        'deviceId': deviceId,
+        'token': token,
+        'platform': platform,
+        'locale': locale,
+      },
+      client: client,
+    );
+  }
+
+  Future<void> unregisterPushDevice(
+    String deviceId, {
+    http.Client? client,
+  }) async {
+    await _request(
+      'DELETE',
+      '/api/member/push/devices/${Uri.encodeComponent(deviceId)}',
+      client: client,
+    );
+  }
+
   Future<GoogleCalendarStatus> googleCalendarStatus({
     http.Client? client,
   }) async {

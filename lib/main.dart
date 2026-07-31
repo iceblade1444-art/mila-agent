@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app.dart';
+import 'services/push/push_notification_service.dart';
 import 'services/storage/stores.dart';
 
 Future<void> main() async {
@@ -18,6 +19,7 @@ Future<void> main() async {
   );
 
   final store = await LocalStore.open();
+  await initializeMilaFirebase();
 
   runApp(
     ProviderScope(
