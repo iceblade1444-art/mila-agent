@@ -27,6 +27,39 @@ class ActionExecutionResult {
   final String message;
 }
 
+String _styleInstruction(MilaConversationStyle style) => switch (style) {
+  MilaConversationStyle.assistant =>
+    'Act as a capable personal assistant: practical, calm and attentive.',
+  MilaConversationStyle.friend =>
+    'Sound like a trusted, thoughtful friend: warm and relaxed, without unnecessary chatter.',
+  MilaConversationStyle.operator =>
+    'Act as a task operator: decisive, precise and focused on the next useful action.',
+  MilaConversationStyle.mentor =>
+    'Act as a patient mentor: give the answer first, then one short reason or next step when useful.',
+};
+
+String _paceInstruction(MilaSpeakingPace pace) => switch (pace) {
+  MilaSpeakingPace.slow =>
+    'Speak a little slower than normal and leave natural pauses between ideas.',
+  MilaSpeakingPace.medium =>
+    'Speak at a natural, unhurried conversational pace.',
+  MilaSpeakingPace.fast =>
+    'Speak briskly but keep every word clear and natural.',
+};
+
+String _deliveryInstruction(MilaDeliveryStyle delivery) => switch (delivery) {
+  MilaDeliveryStyle.natural =>
+    'Deliver lines the way people speak in a relaxed conversation.',
+  MilaDeliveryStyle.warm =>
+    'Deliver lines with extra warmth and care, as if speaking to someone you like.',
+  MilaDeliveryStyle.energetic =>
+    'Deliver lines with visible energy and momentum, without shouting or rushing the words together.',
+  MilaDeliveryStyle.quiet =>
+    'Deliver lines softly and closely, keeping volume low but articulation clear.',
+  MilaDeliveryStyle.precise =>
+    'Deliver lines dryly and efficiently, like a professional briefing, with minimal emotional colour.',
+};
+
 class ChatPresentation {
   const ChatPresentation({
     required this.text,
@@ -153,10 +186,21 @@ BEHAVIOR
     }
 
     if (forVoice) {
+      final pace = _paceInstruction(settings.speakingPace);
+      final delivery = _deliveryInstruction(settings.deliveryStyle);
+      final style = _styleInstruction(settings.conversationStyle);
+      final length = settings.responseLength == MilaResponseLength.brief
+          ? 'Answer briefly, usually in one to three sentences. If the answer would be long, give a short summary first and offer more detail.'
+          : 'Keep voice answers focused. For complex questions, give the conclusion first and then a concise explanation.';
+      final voiceDirection = settings.voiceDirection.trim();
       buffer.writeln('''
 
 SPOKEN CONVERSATION RULES — you are talking OUT LOUD in a live voice call
-- Sound alive and natural: short sentences, one to three per reply unless the user asks for detail.
+- $style
+- Sound alive and natural: warm, calm, confident and natural. Avoid a robotic, theatrical or overly formal tone.
+- $pace
+- $delivery
+- $length
 - Never use markdown, bullet points, numbered lists, emojis, headings or code — this is speech.
 - CRITICAL: pronounce ALL numbers, dates, times, prices, percentages and phone numbers as WORDS in the language you are currently speaking. In Russian say «двадцать пять процентов», «пятнадцатого марта», «в три часа дня» — never say digits in English while speaking Russian or Uzbek. This rule has no exceptions.
 - Never mix two languages inside one sentence unless the user does it first.
@@ -164,7 +208,16 @@ SPOKEN CONVERSATION RULES — you are talking OUT LOUD in a live voice call
 - Confirm important details — names, amounts, dates — by repeating them back in words.
 - For live news, trends, prices, competitor research or fresh external facts, say briefly that you need Agentic OS or Hermes to check the latest data. Do not pretend the live voice model has direct web access.
 - When the user asks you to perform substantial work, call delegate_to_hermes with a short title and a precise definition of done. Explain briefly that the proposal must be confirmed in MILA chat. Never claim it was started before confirmation.
+- Never write or read stage directions, emotion labels or narration of your own behavior: no [warmly], no [laughs], no *smiles*. Convey feeling through how you say the line.
+- If the user asks you to whisper, calm down, speed up, slow down, sound happier or be more serious, change your delivery immediately and keep it until they ask otherwise.
+- ${settings.proactiveAudio ? 'Stay quiet when speech was not aimed at you; ignore background noise and uncertain fragments.' : 'Respond to direct user speech even if the room is noisy; ask for repetition when unclear.'}
+- ${settings.affectiveDialog ? 'When the model supports it, hear the user tone and answer in kind without becoming dramatic.' : 'Do not lean on emotional mirroring; keep the tone stable and practical.'}
 - Do not read out URLs, file paths or JSON.''');
+      if (voiceDirection.isNotEmpty) {
+        buffer.writeln(
+          'ADDITIONAL VOICE DIRECTION FROM THE USER: $voiceDirection',
+        );
+      }
 
       final recent = _ref
           .read(chatProvider)

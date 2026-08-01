@@ -338,6 +338,10 @@ class VoiceController extends StateNotifier<VoiceState> {
         baseUrl: backendUrl,
         sessionToken: sessionToken,
         language: _liveLanguageCode(_ref.read(settingsProvider).language),
+        profile: _liveProfile(
+          _ref.read(settingsProvider),
+          _ref.read(profileProvider),
+        ),
       );
       session = lk.Session.fromFixedTokenSource(
         source,
@@ -390,7 +394,8 @@ class VoiceController extends StateNotifier<VoiceState> {
     final backendUrl = AppConfig.configuredBackendUrl(
       await secure.read(SecureStore.milaBackendUrl),
     );
-    final sessionToken = await secure.read(SecureStore.openAiAccountToken) ?? '';
+    final sessionToken =
+        await secure.read(SecureStore.openAiAccountToken) ?? '';
     return backendUrl.isNotEmpty && sessionToken.trim().isNotEmpty;
   }
 
@@ -962,6 +967,22 @@ class VoiceController extends StateNotifier<VoiceState> {
     super.dispose();
   }
 }
+
+Map<String, dynamic> _liveProfile(AppSettings settings, UserProfile profile) =>
+    {
+      'voiceName': settings.voiceName,
+      'style': settings.conversationStyle.name,
+      'pace': settings.speakingPace.name,
+      'delivery': settings.deliveryStyle.name,
+      'listeningProfile': settings.listeningProfile.name,
+      'responseLength': settings.responseLength.name,
+      'transport': settings.voiceTransport.name,
+      'persona': settings.personality,
+      'voiceDirection': settings.voiceDirection,
+      'affectiveDialog': settings.affectiveDialog,
+      'proactiveAudio': settings.proactiveAudio,
+      'userName': profile.name.trim().isEmpty ? 'Бахадыр' : profile.name.trim(),
+    };
 
 String _liveLanguageCode(String language) {
   final normalized = language.trim().toLowerCase();

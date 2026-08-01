@@ -38,6 +38,7 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
   final _geminiKey = TextEditingController();
   final _geminiModel = TextEditingController();
   final _liveModel = TextEditingController();
+  final _voiceDirection = TextEditingController();
 
   bool _loaded = false;
   bool _showGeminiKey = false;
@@ -58,6 +59,7 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
     _geminiKey.text = await secure.read(SecureStore.geminiKey) ?? '';
     _geminiModel.text = settings.geminiModel;
     _liveModel.text = settings.geminiLiveModel;
+    _voiceDirection.text = settings.voiceDirection;
     final savedToken = await secure.read(SecureStore.openAiAccountToken) ?? '';
     _accountLabel = savedToken.isEmpty
         ? ''
@@ -196,6 +198,9 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
             geminiLiveModel: _liveModel.text.trim().isEmpty
                 ? s.geminiLiveModel
                 : _liveModel.text.trim(),
+            voiceDirection: _voiceDirection.text
+                .replaceAll(RegExp(r'\s+'), ' ')
+                .trim(),
           ),
         );
     if (mounted) {
@@ -217,6 +222,7 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
     _geminiKey.dispose();
     _geminiModel.dispose();
     _liveModel.dispose();
+    _voiceDirection.dispose();
     super.dispose();
   }
 
@@ -329,6 +335,29 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
         ],
       );
     }
+
+    void updateVoiceProfile(AppSettings updated) {
+      ref.read(settingsProvider.notifier).update((_) => updated);
+      ref.read(soulServiceProvider).save(updated, ref.read(profileProvider));
+    }
+
+    Widget enumChips<T extends Enum>(
+      List<T> values,
+      T selected,
+      String Function(T value) label,
+      void Function(T value) onSelected,
+    ) => Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final value in values)
+          MilaChip(
+            label: label(value),
+            active: value == selected,
+            onTap: () => onSelected(value),
+          ),
+      ],
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -573,32 +602,238 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
                     l10n.pick(ru: 'Голос', en: 'Voice', uz: 'Ovoz'),
                     style: text.labelMedium,
                   ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final gender in AssistantVoiceGender.values)
-                        MilaChip(
-                          label: l10n.voiceGender(gender.name),
-                          active:
-                              assistantVoiceGenderFromName(
-                                settings.voiceName,
-                              ) ==
-                              gender,
-                          onTap: () {
-                            final updated = settings.copyWith(
-                              voiceName: voiceNameForGender(gender),
-                            );
-                            ref
-                                .read(settingsProvider.notifier)
-                                .update((_) => updated);
-                            ref
-                                .read(soulServiceProvider)
-                                .save(updated, ref.read(profileProvider));
-                          },
-                        ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    initialValue:
+                        milaLiveVoiceNames.contains(settings.voiceName)
+                        ? settings.voiceName
+                        : femaleVoiceName,
+                    items: [
+                      for (final voice in milaLiveVoiceNames)
+                        DropdownMenuItem(value: voice, child: Text(voice)),
                     ],
+                    onChanged: (voice) {
+                      if (voice == null) return;
+                      updateVoiceProfile(settings.copyWith(voiceName: voice));
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    l10n.pick(
+                      ru: 'Режим слушания',
+                      en: 'Listening',
+                      uz: 'Eshitish rejimi',
+                    ),
+                    style: text.labelMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  enumChips(
+                    MilaListeningProfile.values,
+                    settings.listeningProfile,
+                    (v) => switch (v) {
+                      MilaListeningProfile.balanced => l10n.pick(
+                        ru: 'Сбалансированный',
+                        en: 'Balanced',
+                        uz: 'Muvozanatli',
+                      ),
+                      MilaListeningProfile.noisy => l10n.pick(
+                        ru: 'Шумная комната',
+                        en: 'Noisy room',
+                        uz: 'Shovqinli xona',
+                      ),
+                      MilaListeningProfile.deliberate => l10n.pick(
+                        ru: 'Длинные паузы',
+                        en: 'Long pauses',
+                        uz: 'Uzoq pauzalar',
+                      ),
+                    },
+                    (v) => updateVoiceProfile(
+                      settings.copyWith(listeningProfile: v),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    l10n.pick(
+                      ru: 'Стиль разговора',
+                      en: 'Conversation style',
+                      uz: 'Suhbat uslubi',
+                    ),
+                    style: text.labelMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  enumChips(
+                    MilaConversationStyle.values,
+                    settings.conversationStyle,
+                    (v) => switch (v) {
+                      MilaConversationStyle.assistant => 'Assistant',
+                      MilaConversationStyle.friend => 'Friend',
+                      MilaConversationStyle.operator => 'Operator',
+                      MilaConversationStyle.mentor => 'Mentor',
+                    },
+                    (v) => updateVoiceProfile(
+                      settings.copyWith(conversationStyle: v),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    l10n.pick(
+                      ru: 'Темп речи',
+                      en: 'Speaking pace',
+                      uz: 'Nutq tezligi',
+                    ),
+                    style: text.labelMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  enumChips(
+                    MilaSpeakingPace.values,
+                    settings.speakingPace,
+                    (v) => switch (v) {
+                      MilaSpeakingPace.slow => l10n.pick(
+                        ru: 'Медленно',
+                        en: 'Slow',
+                        uz: 'Sekin',
+                      ),
+                      MilaSpeakingPace.medium => l10n.pick(
+                        ru: 'Средне',
+                        en: 'Medium',
+                        uz: 'O‘rtacha',
+                      ),
+                      MilaSpeakingPace.fast => l10n.pick(
+                        ru: 'Быстро',
+                        en: 'Fast',
+                        uz: 'Tez',
+                      ),
+                    },
+                    (v) =>
+                        updateVoiceProfile(settings.copyWith(speakingPace: v)),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    l10n.pick(ru: 'Подача', en: 'Delivery', uz: 'Ohang'),
+                    style: text.labelMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  enumChips(
+                    MilaDeliveryStyle.values,
+                    settings.deliveryStyle,
+                    (v) => switch (v) {
+                      MilaDeliveryStyle.natural => l10n.pick(
+                        ru: 'Естественно',
+                        en: 'Natural',
+                        uz: 'Tabiiy',
+                      ),
+                      MilaDeliveryStyle.warm => l10n.pick(
+                        ru: 'Тепло',
+                        en: 'Warm',
+                        uz: 'Iliq',
+                      ),
+                      MilaDeliveryStyle.energetic => l10n.pick(
+                        ru: 'Энергично',
+                        en: 'Energetic',
+                        uz: 'Jonli',
+                      ),
+                      MilaDeliveryStyle.quiet => l10n.pick(
+                        ru: 'Тихо',
+                        en: 'Quiet',
+                        uz: 'Sokin',
+                      ),
+                      MilaDeliveryStyle.precise => l10n.pick(
+                        ru: 'Точно',
+                        en: 'Precise',
+                        uz: 'Aniq',
+                      ),
+                    },
+                    (v) =>
+                        updateVoiceProfile(settings.copyWith(deliveryStyle: v)),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    l10n.pick(
+                      ru: 'Голосовые ответы',
+                      en: 'Voice answers',
+                      uz: 'Ovozli javoblar',
+                    ),
+                    style: text.labelMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  enumChips(
+                    MilaResponseLength.values,
+                    settings.responseLength,
+                    (v) => switch (v) {
+                      MilaResponseLength.brief => l10n.pick(
+                        ru: 'Кратко',
+                        en: 'Brief',
+                        uz: 'Qisqa',
+                      ),
+                      MilaResponseLength.balanced => l10n.pick(
+                        ru: 'Баланс',
+                        en: 'Balanced',
+                        uz: 'Muvozanat',
+                      ),
+                    },
+                    (v) => updateVoiceProfile(
+                      settings.copyWith(responseLength: v),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _voiceDirection,
+                    maxLength: 240,
+                    decoration: InputDecoration(
+                      labelText: l10n.pick(
+                        ru: 'Направление голоса',
+                        en: 'Voice direction',
+                        uz: 'Ovoz yo‘nalishi',
+                      ),
+                      hintText: l10n.pick(
+                        ru: 'Например: отвечай теплее, не спеши',
+                        en: 'For example: warmer, do not hurry',
+                        uz: 'Masalan: iliqroq, shoshilma',
+                      ),
+                    ),
+                    onSubmitted: (_) => _save(),
+                  ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: settings.affectiveDialog,
+                    onChanged: (value) => updateVoiceProfile(
+                      settings.copyWith(affectiveDialog: value),
+                    ),
+                    title: Text(
+                      l10n.pick(
+                        ru: 'Affective dialog',
+                        en: 'Affective dialog',
+                        uz: 'Hissiy dialog',
+                      ),
+                    ),
+                    subtitle: Text(
+                      l10n.pick(
+                        ru: 'MILA слышит тон и отвечает живее, когда модель это поддерживает.',
+                        en: 'MILA hears tone and answers more naturally when the model supports it.',
+                        uz: 'Model qo‘llasa, MILA ohangni sezadi va tabiiyroq javob beradi.',
+                      ),
+                    ),
+                  ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: settings.proactiveAudio,
+                    onChanged: (value) => updateVoiceProfile(
+                      settings.copyWith(proactiveAudio: value),
+                    ),
+                    title: Text(
+                      l10n.pick(
+                        ru: 'Proactive audio',
+                        en: 'Proactive audio',
+                        uz: 'Proaktiv audio',
+                      ),
+                    ),
+                    subtitle: Text(
+                      l10n.pick(
+                        ru: 'MILA меньше реагирует на шум и речь не к ней.',
+                        en: 'MILA reacts less to noise and speech not aimed at her.',
+                        uz: 'MILA shovqin va unga qaratilmagan gapga kamroq javob beradi.',
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 10),
                   GhostButton(

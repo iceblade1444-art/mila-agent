@@ -62,16 +62,23 @@ def env_int(name: str, default: int) -> int:
         return default
 
 
-LIVE_VOICES = {"Laomedeia", "Sulafat", "Achird", "Algieba", "Aoede"}
+LIVE_VOICES = {
+    "Sulafat", "Achird", "Achernar", "Vindemiatrix", "Leda",
+    "Algieba", "Despina", "Schedar", "Callirrhoe", "Umbriel",
+    "Zubenelgenubi", "Aoede", "Zephyr", "Autonoe", "Puck",
+    "Laomedeia", "Sadachbia", "Fenrir", "Charon", "Rasalgethi",
+    "Iapetus", "Erinome", "Sadaltager", "Pulcherrima", "Kore",
+    "Orus", "Alnilam", "Gacrux", "Algenib", "Enceladus",
+}
 THINKING_LEVELS = {"MINIMAL", "LOW", "MEDIUM", "HIGH"}
 MEDIA_RESOLUTIONS = {"LOW", "MEDIUM", "HIGH"}
 
 
 def normalize_live_profile(value: object) -> dict:
     source = value if isinstance(value, dict) else {}
-    voice_name = str(source.get("voiceName") or os.getenv("MILA_VOICE", "Laomedeia"))
+    voice_name = str(source.get("voiceName") or os.getenv("MILA_VOICE", "Leda"))
     if voice_name not in LIVE_VOICES:
-        voice_name = "Laomedeia"
+        voice_name = "Leda"
     thinking_level = str(
         source.get("thinkingLevel")
         or os.getenv("MILA_THINKING_LEVEL", "LOW")
@@ -102,15 +109,68 @@ def normalize_live_profile(value: object) -> dict:
     context_target = max(32768, min(context_target, context_trigger - 8192))
     return {
         "voice_name": voice_name,
-        "additional_instructions": str(
-            source.get("additionalInstructions") or ""
-        ).strip()[:12000],
+        "additional_instructions": build_profile_instructions(source),
         "thinking_level": thinking_level,
         "media_resolution": media_resolution,
         "context_trigger": context_trigger,
         "context_target": context_target,
         "function_calling": source.get("functionCalling") is not False,
     }
+
+
+def build_profile_instructions(source: dict) -> str:
+    styles = {
+        "assistant": "Act as a capable personal assistant: practical, calm and attentive.",
+        "friend": "Sound like a trusted, thoughtful friend: warm and relaxed, without unnecessary chatter.",
+        "operator": "Act as a task operator: decisive, precise and focused on the next useful action.",
+        "mentor": "Act as a patient mentor: give the answer first, then one short reason or next step when useful.",
+    }
+    paces = {
+        "slow": "Speak a little slower than normal and leave natural pauses between ideas.",
+        "medium": "Speak at a natural, unhurried conversational pace.",
+        "fast": "Speak briskly but keep every word clear and natural.",
+    }
+    deliveries = {
+        "natural": "Deliver lines the way people speak in a relaxed conversation.",
+        "warm": "Deliver lines with extra warmth and care, as if speaking to someone you like.",
+        "energetic": "Deliver lines with visible energy and momentum, without shouting or rushing the words together.",
+        "quiet": "Deliver lines softly and closely, keeping volume low but articulation clear.",
+        "precise": "Deliver lines dryly and efficiently, like a professional briefing, with minimal emotional colour.",
+    }
+    lengths = {
+        "brief": "In voice mode, answer briefly, usually in one to three sentences. If the answer would be long, give a short summary first and offer more detail.",
+        "balanced": "Keep voice answers focused. For complex questions, give the conclusion first and then a concise explanation.",
+    }
+    listening = {
+        "balanced": "Use normal turn detection for everyday conversation.",
+        "noisy": "Ignore background noise, uncertain fragments, punctuation-like transcripts and speech not aimed at you. Prefer fewer false starts.",
+        "deliberate": "Allow longer pauses before answering; do not interrupt the user while they are still forming a thought.",
+    }
+    def pick(table: dict, key: object, fallback: str) -> str:
+        return table.get(str(key or "").lower(), table[fallback])
+
+    persona = str(source.get("persona") or "").strip()[:1200]
+    voice_direction = str(source.get("voiceDirection") or "").strip()[:240]
+    lines = [
+        pick(styles, source.get("style"), "assistant"),
+        pick(paces, source.get("pace"), "medium"),
+        pick(deliveries, source.get("delivery"), "natural"),
+        pick(lengths, source.get("responseLength"), "brief"),
+        pick(listening, source.get("listeningProfile"), "balanced"),
+        "Never write or read stage directions, emotion labels, or narration of your own behavior.",
+    ]
+    if source.get("proactiveAudio") is not False:
+        lines.append("Stay quiet when speech was not aimed at you; ask for repetition instead of guessing from noise.")
+    if source.get("affectiveDialog") is not False:
+        lines.append("When supported, hear the user's tone and answer in kind without becoming dramatic.")
+    if persona:
+        lines.append(f"Who MILA is, as defined by the user:\n{persona}")
+    if voice_direction:
+        lines.append(f"Additional voice direction from the user:\n{voice_direction}")
+    extra = str(source.get("additionalInstructions") or "").strip()[:12000]
+    if extra:
+        lines.append(extra)
+    return "\n".join(lines).strip()[:12000]
 
 
 async def agentic_os_action(name: str, args: dict) -> str:

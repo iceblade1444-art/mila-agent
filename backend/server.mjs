@@ -36,11 +36,12 @@ const config = {
 };
 
 const LIVE_VOICES = new Set([
-  'Laomedeia',
-  'Sulafat',
-  'Achird',
-  'Algieba',
-  'Aoede',
+  'Sulafat', 'Achird', 'Achernar', 'Vindemiatrix', 'Leda',
+  'Algieba', 'Despina', 'Schedar', 'Callirrhoe', 'Umbriel',
+  'Zubenelgenubi', 'Aoede', 'Zephyr', 'Autonoe', 'Puck',
+  'Laomedeia', 'Sadachbia', 'Fenrir', 'Charon', 'Rasalgethi',
+  'Iapetus', 'Erinome', 'Sadaltager', 'Pulcherrima', 'Kore',
+  'Orus', 'Alnilam', 'Gacrux', 'Algenib', 'Enceladus',
 ]);
 const THINKING_LEVELS = new Set(['minimal', 'low', 'medium', 'high']);
 const MEDIA_RESOLUTIONS = new Set(['low', 'medium', 'high']);
@@ -61,8 +62,19 @@ export function normalizeLiveProfile(value = {}) {
     120000,
   );
   return {
-    voiceName: LIVE_VOICES.has(source.voiceName) ? source.voiceName : 'Laomedeia',
+    voiceName: LIVE_VOICES.has(source.voiceName) ? source.voiceName : 'Leda',
     additionalInstructions: String(source.additionalInstructions || '').trim().slice(0, 12000),
+    style: String(source.style || 'assistant').slice(0, 40),
+    pace: String(source.pace || 'medium').slice(0, 40),
+    delivery: String(source.delivery || 'natural').slice(0, 40),
+    listeningProfile: String(source.listeningProfile || 'balanced').slice(0, 40),
+    responseLength: String(source.responseLength || 'brief').slice(0, 40),
+    transport: String(source.transport || 'direct').slice(0, 40),
+    persona: String(source.persona || '').trim().slice(0, 1200),
+    voiceDirection: String(source.voiceDirection || '').replace(/\s+/g, ' ').trim().slice(0, 240),
+    affectiveDialog: source.affectiveDialog !== false,
+    proactiveAudio: source.proactiveAudio !== false,
+    userName: String(source.userName || '').trim().slice(0, 40),
     thinkingLevel: THINKING_LEVELS.has(source.thinkingLevel) ? source.thinkingLevel : 'low',
     mediaResolution: MEDIA_RESOLUTIONS.has(source.mediaResolution) ? source.mediaResolution : 'low',
     contextTriggerTokens,

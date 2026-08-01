@@ -13,7 +13,10 @@ void main() {
         'https://agent.example.test/v1/voice/livekit-token',
       );
       expect(request.headers['authorization'], 'Bearer mobile-session');
-      expect(jsonDecode(request.body), {'language': 'uz-UZ'});
+      expect(jsonDecode(request.body), {
+        'language': 'uz-UZ',
+        'profile': {'voiceName': 'Leda', 'style': 'friend'},
+      });
       return http.Response(
         jsonEncode({
           'server_url': 'wss://agent.example.test',
@@ -29,6 +32,7 @@ void main() {
       baseUrl: 'https://agent.example.test/',
       sessionToken: 'mobile-session',
       language: 'uz-UZ',
+      profile: const {'voiceName': 'Leda', 'style': 'friend'},
       client: client,
     ).fetch();
 

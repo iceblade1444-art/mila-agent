@@ -8,12 +8,14 @@ class MilaLiveKitTokenSource implements TokenSourceFixed {
     required this.baseUrl,
     required this.sessionToken,
     required this.language,
+    this.profile = const {},
     this.client,
   });
 
   final String baseUrl;
   final String sessionToken;
   final String language;
+  final Map<String, dynamic> profile;
   final http.Client? client;
 
   @override
@@ -33,7 +35,7 @@ class MilaLiveKitTokenSource implements TokenSourceFixed {
               'Authorization': 'Bearer $sessionToken',
               'Content-Type': 'application/json',
             },
-            body: jsonEncode({'language': language}),
+            body: jsonEncode({'language': language, 'profile': profile}),
           )
           .timeout(const Duration(seconds: 12));
       final body = _decode(response.body);

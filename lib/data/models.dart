@@ -403,6 +403,18 @@ enum LlmProviderKind { openaiAccount, openai, gemini, claude }
 
 enum AssistantVoiceGender { female, male }
 
+enum MilaConversationStyle { assistant, friend, operator, mentor }
+
+enum MilaSpeakingPace { slow, medium, fast }
+
+enum MilaDeliveryStyle { natural, warm, energetic, quiet, precise }
+
+enum MilaListeningProfile { balanced, noisy, deliberate }
+
+enum MilaResponseLength { brief, balanced }
+
+enum MilaVoiceTransport { direct, livekit }
+
 class AssistantPersonality {
   const AssistantPersonality({
     required this.id,
@@ -449,9 +461,43 @@ AssistantPersonality assistantPersonalityById(String id) =>
       orElse: () => assistantPersonalities.first,
     );
 
-const femaleVoiceName = 'Laomedeia';
+const femaleVoiceName = 'Leda';
 const legacyFemaleVoiceName = 'Aoede';
 const maleVoiceName = 'Puck';
+const legacyFemaleVoiceNames = {'Aoede', 'Laomedeia', 'Sulafat'};
+
+const milaLiveVoiceNames = <String>[
+  'Sulafat',
+  'Achird',
+  'Achernar',
+  'Vindemiatrix',
+  'Leda',
+  'Algieba',
+  'Despina',
+  'Schedar',
+  'Callirrhoe',
+  'Umbriel',
+  'Zubenelgenubi',
+  'Aoede',
+  'Zephyr',
+  'Autonoe',
+  'Puck',
+  'Laomedeia',
+  'Sadachbia',
+  'Fenrir',
+  'Charon',
+  'Rasalgethi',
+  'Iapetus',
+  'Erinome',
+  'Sadaltager',
+  'Pulcherrima',
+  'Kore',
+  'Orus',
+  'Alnilam',
+  'Gacrux',
+  'Algenib',
+  'Enceladus',
+];
 
 AssistantVoiceGender assistantVoiceGenderFromName(String voiceName) {
   const knownMaleVoices = {'Puck', 'Charon', 'Fenrir', 'Orus'};
@@ -482,6 +528,15 @@ class AppSettings {
     this.personality =
         'Warm, attentive and friendly. Speak naturally, show empathy and gentle humor, while staying useful, honest and respectful.',
     this.language = 'Русский',
+    this.conversationStyle = MilaConversationStyle.assistant,
+    this.speakingPace = MilaSpeakingPace.medium,
+    this.deliveryStyle = MilaDeliveryStyle.natural,
+    this.listeningProfile = MilaListeningProfile.balanced,
+    this.responseLength = MilaResponseLength.brief,
+    this.voiceTransport = MilaVoiceTransport.direct,
+    this.voiceDirection = '',
+    this.affectiveDialog = true,
+    this.proactiveAudio = true,
     this.conciseSummaries = true,
     this.autoMemory = true,
     this.assistantSetupDone = false,
@@ -500,6 +555,15 @@ class AppSettings {
   final String personalityId;
   final String personality;
   final String language;
+  final MilaConversationStyle conversationStyle;
+  final MilaSpeakingPace speakingPace;
+  final MilaDeliveryStyle deliveryStyle;
+  final MilaListeningProfile listeningProfile;
+  final MilaResponseLength responseLength;
+  final MilaVoiceTransport voiceTransport;
+  final String voiceDirection;
+  final bool affectiveDialog;
+  final bool proactiveAudio;
   final bool conciseSummaries;
   final bool autoMemory;
   final bool assistantSetupDone;
@@ -518,6 +582,15 @@ class AppSettings {
     String? personalityId,
     String? personality,
     String? language,
+    MilaConversationStyle? conversationStyle,
+    MilaSpeakingPace? speakingPace,
+    MilaDeliveryStyle? deliveryStyle,
+    MilaListeningProfile? listeningProfile,
+    MilaResponseLength? responseLength,
+    MilaVoiceTransport? voiceTransport,
+    String? voiceDirection,
+    bool? affectiveDialog,
+    bool? proactiveAudio,
     bool? conciseSummaries,
     bool? autoMemory,
     bool? assistantSetupDone,
@@ -535,6 +608,15 @@ class AppSettings {
     personalityId: personalityId ?? this.personalityId,
     personality: personality ?? this.personality,
     language: language ?? this.language,
+    conversationStyle: conversationStyle ?? this.conversationStyle,
+    speakingPace: speakingPace ?? this.speakingPace,
+    deliveryStyle: deliveryStyle ?? this.deliveryStyle,
+    listeningProfile: listeningProfile ?? this.listeningProfile,
+    responseLength: responseLength ?? this.responseLength,
+    voiceTransport: voiceTransport ?? this.voiceTransport,
+    voiceDirection: voiceDirection ?? this.voiceDirection,
+    affectiveDialog: affectiveDialog ?? this.affectiveDialog,
+    proactiveAudio: proactiveAudio ?? this.proactiveAudio,
     conciseSummaries: conciseSummaries ?? this.conciseSummaries,
     autoMemory: autoMemory ?? this.autoMemory,
     assistantSetupDone: assistantSetupDone ?? this.assistantSetupDone,
@@ -542,7 +624,7 @@ class AppSettings {
   );
 
   Map<String, dynamic> toJson() => {
-    'v': 11,
+    'v': 12,
     'onboarded': onboarded,
     'permissionsDone': permissionsDone,
     'provider': provider.name,
@@ -555,6 +637,15 @@ class AppSettings {
     'personalityId': personalityId,
     'personality': personality,
     'language': language,
+    'conversationStyle': conversationStyle.name,
+    'speakingPace': speakingPace.name,
+    'deliveryStyle': deliveryStyle.name,
+    'listeningProfile': listeningProfile.name,
+    'responseLength': responseLength.name,
+    'voiceTransport': voiceTransport.name,
+    'voiceDirection': voiceDirection,
+    'affectiveDialog': affectiveDialog,
+    'proactiveAudio': proactiveAudio,
     'conciseSummaries': conciseSummaries,
     'autoMemory': autoMemory,
     'assistantSetupDone': assistantSetupDone,
@@ -600,7 +691,7 @@ class AppSettings {
       geminiModel = 'gemini-2.5-flash';
     }
     var voiceName = json['voiceName'] as String? ?? femaleVoiceName;
-    if (voiceName == legacyFemaleVoiceName) {
+    if (legacyFemaleVoiceNames.contains(voiceName)) {
       voiceName = femaleVoiceName;
     }
     final rawProvider = LlmProviderKind.values.firstWhere(
@@ -626,6 +717,41 @@ class AppSettings {
           json['personalityId'] as String? ?? defaultAssistantPersonalityId,
       personality: personality,
       language: language,
+      conversationStyle: _enumByName(
+        MilaConversationStyle.values,
+        json['conversationStyle'],
+        MilaConversationStyle.assistant,
+      ),
+      speakingPace: _enumByName(
+        MilaSpeakingPace.values,
+        json['speakingPace'],
+        MilaSpeakingPace.medium,
+      ),
+      deliveryStyle: _enumByName(
+        MilaDeliveryStyle.values,
+        json['deliveryStyle'],
+        MilaDeliveryStyle.natural,
+      ),
+      listeningProfile: _enumByName(
+        MilaListeningProfile.values,
+        json['listeningProfile'],
+        MilaListeningProfile.balanced,
+      ),
+      responseLength: _enumByName(
+        MilaResponseLength.values,
+        json['responseLength'],
+        MilaResponseLength.brief,
+      ),
+      voiceTransport: _enumByName(
+        MilaVoiceTransport.values,
+        json['voiceTransport'],
+        MilaVoiceTransport.direct,
+      ),
+      voiceDirection: (json['voiceDirection'] as String? ?? '')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim(),
+      affectiveDialog: json['affectiveDialog'] as bool? ?? true,
+      proactiveAudio: json['proactiveAudio'] as bool? ?? true,
       conciseSummaries: json['conciseSummaries'] as bool? ?? true,
       autoMemory: json['autoMemory'] as bool? ?? true,
       // Existing installs skip the new setup step; they can adjust
@@ -637,3 +763,6 @@ class AppSettings {
     );
   }
 }
+
+T _enumByName<T extends Enum>(List<T> values, Object? value, T fallback) =>
+    values.firstWhere((item) => item.name == value, orElse: () => fallback);
