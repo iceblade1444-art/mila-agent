@@ -449,7 +449,8 @@ AssistantPersonality assistantPersonalityById(String id) =>
       orElse: () => assistantPersonalities.first,
     );
 
-const femaleVoiceName = 'Aoede';
+const femaleVoiceName = 'Laomedeia';
+const legacyFemaleVoiceName = 'Aoede';
 const maleVoiceName = 'Puck';
 
 AssistantVoiceGender assistantVoiceGenderFromName(String voiceName) {
@@ -598,6 +599,10 @@ class AppSettings {
             geminiModel == 'gemini-3.1-flash')) {
       geminiModel = 'gemini-2.5-flash';
     }
+    var voiceName = json['voiceName'] as String? ?? femaleVoiceName;
+    if (voiceName == legacyFemaleVoiceName) {
+      voiceName = femaleVoiceName;
+    }
     final rawProvider = LlmProviderKind.values.firstWhere(
       (k) => k.name == json['provider'],
       orElse: () => LlmProviderKind.gemini,
@@ -615,7 +620,7 @@ class AppSettings {
       geminiModel: geminiModel,
       anthropicModel: json['anthropicModel'] as String? ?? 'claude-sonnet-5',
       geminiLiveModel: liveModel,
-      voiceName: json['voiceName'] as String? ?? femaleVoiceName,
+      voiceName: voiceName,
       assistantName: json['assistantName'] as String? ?? 'MILA',
       personalityId:
           json['personalityId'] as String? ?? defaultAssistantPersonalityId,
