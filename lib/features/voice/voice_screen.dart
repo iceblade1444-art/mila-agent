@@ -5,9 +5,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
 
-import '../../core/config/app_config.dart';
 import '../../core/i18n/mila_localizations.dart';
 import '../../core/theme/mila_theme.dart';
 import '../../core/widgets/common.dart';
@@ -32,17 +30,11 @@ class _VoiceScreenState extends ConsumerState<VoiceScreen>
   CameraController? _camera;
   bool _cameraStarting = false;
   bool _capturingFrame = false;
-  bool _webLaunchAttempted = false;
-  bool _useNativeVoice = false;
-  String _webLaunchError = '';
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) unawaited(_openWebVoice());
-    });
   }
 
   @override
@@ -138,39 +130,6 @@ class _VoiceScreenState extends ConsumerState<VoiceScreen>
     await camera?.dispose();
   }
 
-  Future<Uri> _webVoiceUri() async {
-    final secure = ref.read(secureStoreProvider);
-    final backendUrl = AppConfig.configuredBackendUrl(
-      await secure.read(SecureStore.milaBackendUrl),
-    );
-    final uri = Uri.parse(backendUrl);
-    final path = uri.path.replaceFirst(RegExp(r'/mila/?$'), '');
-    return uri.replace(
-      path: path.isEmpty ? '/' : path,
-      query: null,
-      fragment: '/speech',
-    );
-  }
-
-  Future<void> _openWebVoice() async {
-    if (_webLaunchAttempted && _webLaunchError.isEmpty) return;
-    setState(() {
-      _webLaunchAttempted = true;
-      _webLaunchError = '';
-    });
-    try {
-      final uri = await _webVoiceUri();
-      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (!opened) {
-        throw StateError('Could not open $uri');
-      }
-    } catch (error) {
-      if (mounted) {
-        setState(() => _webLaunchError = error.toString());
-      }
-    }
-  }
-
   @override
   void deactivate() {
     // Leaving the screen ends the session.
@@ -211,97 +170,6 @@ class _VoiceScreenState extends ConsumerState<VoiceScreen>
     final assistantName = ref.watch(settingsProvider).assistantName;
     final text = Theme.of(context).textTheme;
     final l10n = context.l10n;
-
-    if (!_useNativeVoice) {
-      return Scaffold(
-        body: MilaBackground(
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 8, 24, 28),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.arrow_back_rounded),
-                        onPressed: () => context.pop(),
-                      ),
-                      const Spacer(),
-                      IconButton(
-                        icon: const Icon(Icons.settings_outlined),
-                        onPressed: () => context.push('/settings/providers'),
-                      ),
-                    ],
-                  ),
-                  const Spacer(),
-                  const AdaptiveOrb(
-                    size: 184,
-                    mood: OrbMood.attention,
-                    level: 0.68,
-                  ),
-                  const SizedBox(height: 28),
-                  Text(
-                    l10n.pick(
-                      ru: 'MILA Live из Agentic OS',
-                      en: 'Agentic OS MILA Live',
-                      uz: 'Agentic OS MILA Live',
-                    ),
-                    textAlign: TextAlign.center,
-                    style: text.headlineSmall,
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    l10n.pick(
-                      ru: 'Открываю веб-версию с тем же голосом, русской речью и настройками, что уже работают в Agentic OS.',
-                      en: 'Opening the web version with the same voice, speech behavior and settings that already work in Agentic OS.',
-                      uz: 'Agentic OS’da ishlayotgan bir xil ovoz va sozlamali web versiya ochilmoqda.',
-                    ),
-                    textAlign: TextAlign.center,
-                    style: text.bodyMedium?.copyWith(
-                      color: MilaColors.textSecondary,
-                    ),
-                  ),
-                  if (_webLaunchError.isNotEmpty) ...[
-                    const SizedBox(height: 18),
-                    GlassCard(
-                      borderColor: MilaColors.danger.withValues(alpha: 0.4),
-                      child: Text(
-                        _webLaunchError,
-                        textAlign: TextAlign.center,
-                        style: text.bodySmall,
-                      ),
-                    ),
-                  ],
-                  const Spacer(),
-                  GradientButton(
-                    label: l10n.pick(
-                      ru: 'Открыть web MILA',
-                      en: 'Open web MILA',
-                      uz: 'Web MILA’ni ochish',
-                    ),
-                    icon: Icons.open_in_browser_rounded,
-                    onPressed: () {
-                      setState(() => _webLaunchAttempted = false);
-                      unawaited(_openWebVoice());
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  GhostButton(
-                    label: l10n.pick(
-                      ru: 'Нативный Live как запасной',
-                      en: 'Use native Live fallback',
-                      uz: 'Native Live zaxira rejimi',
-                    ),
-                    icon: Icons.mic_rounded,
-                    onPressed: () => setState(() => _useNativeVoice = true),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-    }
 
     final (title, subtitle) = _justCompleted
         ? (
