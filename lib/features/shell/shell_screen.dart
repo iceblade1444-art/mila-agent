@@ -16,16 +16,24 @@ class ShellScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
     return Scaffold(
       extendBody: true,
       body: shell,
-      bottomNavigationBar: _BottomBar(shell: shell),
+      bottomNavigationBar: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 180),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        child: keyboardOpen
+            ? const SizedBox.shrink(key: ValueKey('keyboard-hidden-nav'))
+            : _BottomBar(key: const ValueKey('bottom-nav'), shell: shell),
+      ),
     );
   }
 }
 
 class _BottomBar extends StatelessWidget {
-  const _BottomBar({required this.shell});
+  const _BottomBar({super.key, required this.shell});
 
   final StatefulNavigationShell shell;
 
@@ -53,19 +61,19 @@ class _BottomBar extends StatelessWidget {
 
     return Padding(
       padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        bottom: MediaQuery.paddingOf(context).bottom + 12,
+        left: 18,
+        right: 18,
+        bottom: MediaQuery.paddingOf(context).bottom + 8,
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(24),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
           child: Container(
-            height: 68,
+            height: 58,
             decoration: BoxDecoration(
               color: const Color(0xFF141926).withValues(alpha: 0.82),
-              borderRadius: BorderRadius.circular(28),
+              borderRadius: BorderRadius.circular(24),
               border: Border.all(color: MilaColors.cardBorder),
             ),
             child: Row(
@@ -77,8 +85,8 @@ class _BottomBar extends StatelessWidget {
                     child: GestureDetector(
                       onTap: () => context.push('/voice'),
                       child: Container(
-                        width: 52,
-                        height: 52,
+                        width: 46,
+                        height: 46,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           boxShadow: [
@@ -88,7 +96,7 @@ class _BottomBar extends StatelessWidget {
                             ),
                           ],
                         ),
-                        child: const AdaptiveOrb(size: 52),
+                        child: const AdaptiveOrb(size: 46),
                       ),
                     ),
                   ),
@@ -125,8 +133,8 @@ class _BottomBar extends StatelessWidget {
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 260),
                   curve: Curves.easeOutCubic,
-                  width: 36,
-                  height: 34,
+                  width: 32,
+                  height: 30,
                   decoration: BoxDecoration(
                     color: selected
                         ? MilaColors.cyan.withValues(alpha: 0.1)
@@ -136,7 +144,7 @@ class _BottomBar extends StatelessWidget {
                         ? [
                             BoxShadow(
                               color: MilaColors.cyan.withValues(alpha: 0.14),
-                              blurRadius: 12,
+                              blurRadius: 10,
                             ),
                           ]
                         : const [],
@@ -146,7 +154,7 @@ class _BottomBar extends StatelessWidget {
                     duration: const Duration(milliseconds: 260),
                     child: Icon(
                       icon,
-                      size: 23,
+                      size: 21,
                       color: selected
                           ? MilaColors.cyan
                           : MilaColors.textTertiary,

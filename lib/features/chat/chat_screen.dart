@@ -582,7 +582,7 @@ class _DateDivider extends StatelessWidget {
 }
 
 class _MilaAvatar extends StatefulWidget {
-  const _MilaAvatar({this.size = 34});
+  const _MilaAvatar({this.size = 32});
 
   final double size;
 
@@ -606,34 +606,42 @@ class _MilaAvatarState extends State<_MilaAvatar>
   Widget _avatar(double progress) {
     final pulse = Curves.easeInOut.transform(progress);
     final size = widget.size;
-    return Transform.scale(
-      scale: 0.97 + pulse * 0.05,
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          gradient: MilaColors.orbGradient,
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.white.withValues(alpha: 0.42)),
-          boxShadow: [
-            BoxShadow(
-              color: MilaColors.cyan.withValues(alpha: 0.16 + pulse * 0.18),
-              blurRadius: 10 + pulse * 8,
-              spreadRadius: pulse * 1.5,
+    return SizedBox.square(
+      dimension: size + 10,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Transform.scale(
+            scale: 1.02 + pulse * 0.08,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: MilaColors.cyan.withValues(
+                      alpha: 0.18 + pulse * 0.2,
+                    ),
+                    blurRadius: 12 + pulse * 10,
+                    spreadRadius: pulse * 1.2,
+                  ),
+                  BoxShadow(
+                    color: MilaColors.violet.withValues(alpha: 0.22),
+                    blurRadius: 18,
+                  ),
+                ],
+              ),
+              child: SizedBox.square(dimension: size),
             ),
-          ],
-        ),
-        child: Container(
-          margin: EdgeInsets.all(size * 0.12),
-          decoration: BoxDecoration(
-            color: const Color(0xFF11182A).withValues(alpha: 0.74),
-            shape: BoxShape.circle,
           ),
-          child: Transform.rotate(
-            angle: (pulse - 0.5) * 0.16,
-            child: Icon(Icons.auto_awesome_rounded, size: size * 0.44),
+          Transform.scale(
+            scale: 0.98 + pulse * 0.04,
+            child: AdaptiveOrb(
+              size: size + 8,
+              mood: OrbMood.speaking,
+              level: 0.35 + pulse * 0.45,
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -644,6 +652,80 @@ class _MilaAvatarState extends State<_MilaAvatar>
     return AnimatedBuilder(
       animation: _controller,
       builder: (_, _) => _avatar(_controller.value),
+    );
+  }
+}
+
+class _SendButton extends StatefulWidget {
+  const _SendButton({required this.busy, required this.onSend});
+
+  final bool busy;
+  final VoidCallback onSend;
+
+  @override
+  State<_SendButton> createState() => _SendButtonState();
+}
+
+class _SendButtonState extends State<_SendButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1800),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Widget _button(double progress) {
+    final pulse = Curves.easeInOut.transform(progress);
+    return GestureDetector(
+      onTap: widget.busy ? null : widget.onSend,
+      child: AnimatedScale(
+        duration: const Duration(milliseconds: 180),
+        scale: widget.busy ? 0.96 : 1,
+        child: Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            gradient: MilaColors.primaryGradient,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: MilaColors.violet.withValues(alpha: 0.28 + pulse * 0.2),
+                blurRadius: 10 + pulse * 8,
+              ),
+            ],
+          ),
+          child: widget.busy
+              ? const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : Transform.translate(
+                  offset: Offset(0, -pulse * 1.5),
+                  child: const Icon(
+                    Icons.arrow_upward_rounded,
+                    color: Colors.white,
+                    size: 23,
+                  ),
+                ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (MediaQuery.disableAnimationsOf(context)) return _button(0.5);
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (_, _) => _button(_controller.value),
     );
   }
 }
@@ -1153,8 +1235,15 @@ class _InputBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 88),
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
+    final bottomPadding = keyboardOpen
+        ? 6.0
+        : MediaQuery.paddingOf(context).bottom + 30;
+
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 190),
+      curve: Curves.easeOutCubic,
+      padding: EdgeInsets.fromLTRB(14, 4, 14, bottomPadding),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -1232,6 +1321,8 @@ class _InputBar extends StatelessWidget {
                   uz: 'Rasm yoki fayl qo\'shish',
                 ),
                 onPressed: busy ? null : onAttach,
+                iconSize: 24,
+                visualDensity: VisualDensity.compact,
                 icon: const Icon(Icons.add_circle_outline_rounded),
               ),
               Expanded(
@@ -1254,41 +1345,15 @@ class _InputBar extends StatelessWidget {
                         Icons.mic_none_rounded,
                         color: MilaColors.textSecondary,
                       ),
+                      iconSize: 22,
+                      visualDensity: VisualDensity.compact,
                       onPressed: onMic,
                     ),
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
-              GestureDetector(
-                onTap: busy ? null : onSend,
-                child: Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    gradient: MilaColors.primaryGradient,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: MilaColors.violet.withValues(alpha: 0.4),
-                        blurRadius: 14,
-                      ),
-                    ],
-                  ),
-                  child: busy
-                      ? const Padding(
-                          padding: EdgeInsets.all(14),
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Icon(
-                          Icons.arrow_upward_rounded,
-                          color: Colors.white,
-                        ),
-                ),
-              ),
+              const SizedBox(width: 8),
+              _SendButton(busy: busy, onSend: onSend),
             ],
           ),
         ],
