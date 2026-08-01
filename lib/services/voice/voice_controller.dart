@@ -182,7 +182,16 @@ class VoiceController extends StateNotifier<VoiceState> {
         return;
       }
 
-      if (await _startLiveKitIfAvailable()) {
+      final hasAgenticOsVoice = await _hasAgenticOsVoiceConfig();
+      if (hasAgenticOsVoice) {
+        if (await _startLiveKitIfAvailable()) {
+          return;
+        }
+        state = const VoiceState(
+          phase: VoicePhase.error,
+          error:
+              'Agentic OS voice bridge is unavailable. Check LiveKit and MILA server, then try again.',
+        );
         return;
       }
 
@@ -374,6 +383,15 @@ class VoiceController extends StateNotifier<VoiceState> {
       }
       return false;
     }
+  }
+
+  Future<bool> _hasAgenticOsVoiceConfig() async {
+    final secure = _ref.read(secureStoreProvider);
+    final backendUrl = AppConfig.configuredBackendUrl(
+      await secure.read(SecureStore.milaBackendUrl),
+    );
+    final sessionToken = await secure.read(SecureStore.openAiAccountToken) ?? '';
+    return backendUrl.isNotEmpty && sessionToken.trim().isNotEmpty;
   }
 
   Future<void> _discardLiveKitSession(lk.Session session) async {
