@@ -5,8 +5,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:webview_flutter/webview_flutter.dart';
-import 'package:webview_flutter_android/webview_flutter_android.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/config/app_config.dart';
 import '../../core/i18n/mila_localizations.dart';
@@ -33,17 +32,16 @@ class _VoiceScreenState extends ConsumerState<VoiceScreen>
   CameraController? _camera;
   bool _cameraStarting = false;
   bool _capturingFrame = false;
-  WebViewController? _webController;
-  int _webProgress = 0;
-  String _webError = '';
+  bool _webLaunchAttempted = false;
   bool _useNativeVoice = false;
+  String _webLaunchError = '';
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) unawaited(_setupWebVoice());
+      if (mounted) unawaited(_openWebVoice());
     });
   }
 
@@ -154,47 +152,22 @@ class _VoiceScreenState extends ConsumerState<VoiceScreen>
     );
   }
 
-  Future<void> _setupWebVoice() async {
+  Future<void> _openWebVoice() async {
+    if (_webLaunchAttempted && _webLaunchError.isEmpty) return;
+    setState(() {
+      _webLaunchAttempted = true;
+      _webLaunchError = '';
+    });
     try {
       final uri = await _webVoiceUri();
-      final controller = WebViewController()
-        ..setJavaScriptMode(JavaScriptMode.unrestricted)
-        ..setBackgroundColor(MilaColors.background)
-        ..setNavigationDelegate(
-          NavigationDelegate(
-            onProgress: (progress) {
-              if (mounted) setState(() => _webProgress = progress);
-            },
-            onPageStarted: (_) {
-              if (mounted) {
-                setState(() {
-                  _webProgress = 0;
-                  _webError = '';
-                });
-              }
-            },
-            onPageFinished: (_) {
-              if (mounted) setState(() => _webProgress = 100);
-            },
-            onWebResourceError: (error) {
-              if (!mounted || error.isForMainFrame == false) return;
-              setState(() => _webError = error.description);
-            },
-          ),
-        );
-
-      if (controller.platform is AndroidWebViewController) {
-        final android = controller.platform as AndroidWebViewController;
-        await android.setMediaPlaybackRequiresUserGesture(false);
-        android.setOnPlatformPermissionRequest((request) {
-          request.grant();
-        });
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!opened) {
+        throw StateError('Could not open $uri');
       }
-
-      await controller.loadRequest(uri);
-      if (mounted) setState(() => _webController = controller);
     } catch (error) {
-      if (mounted) setState(() => _webError = error.toString());
+      if (mounted) {
+        setState(() => _webLaunchError = error.toString());
+      }
     }
   }
 
@@ -240,201 +213,90 @@ class _VoiceScreenState extends ConsumerState<VoiceScreen>
     final l10n = context.l10n;
 
     if (!_useNativeVoice) {
-      final webController = _webController;
       return Scaffold(
         body: MilaBackground(
           child: SafeArea(
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(6, 2, 8, 8),
-                  child: Row(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 28),
+              child: Column(
+                children: [
+                  Row(
                     children: [
                       IconButton(
                         icon: const Icon(Icons.arrow_back_rounded),
-                        onPressed: () async {
-                          final controller = _webController;
-                          if (controller != null &&
-                              await controller.canGoBack()) {
-                            await controller.goBack();
-                            return;
-                          }
-                          if (context.mounted) context.pop();
-                        },
+                        onPressed: () => context.pop(),
                       ),
-                      const AdaptiveOrb(
-                        size: 38,
-                        mood: OrbMood.attention,
-                        level: 0.65,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              l10n.pick(
-                                ru: 'MILA Live',
-                                en: 'MILA Live',
-                                uz: 'MILA Live',
-                              ),
-                              style: text.titleMedium,
-                            ),
-                            Text(
-                              l10n.pick(
-                                ru: 'Agentic OS внутри приложения',
-                                en: 'Agentic OS inside the app',
-                                uz: 'Agentic OS ilova ichida',
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                              style: text.labelSmall?.copyWith(
-                                color: MilaColors.textSecondary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: l10n.pick(
-                          ru: 'Обновить',
-                          en: 'Reload',
-                          uz: 'Yangilash',
-                        ),
-                        icon: const Icon(Icons.refresh_rounded),
-                        onPressed: () => _webController?.reload(),
-                      ),
-                      IconButton(
-                        tooltip: l10n.pick(
-                          ru: 'Нативный Live',
-                          en: 'Native Live',
-                          uz: 'Native Live',
-                        ),
-                        icon: const Icon(Icons.mic_rounded),
-                        onPressed: () => setState(() => _useNativeVoice = true),
-                      ),
+                      const Spacer(),
                       IconButton(
                         icon: const Icon(Icons.settings_outlined),
                         onPressed: () => context.push('/settings/providers'),
                       ),
                     ],
                   ),
-                ),
-                if (_webProgress < 100)
-                  LinearProgressIndicator(
-                    value: _webProgress <= 0 ? null : _webProgress / 100,
-                    minHeight: 2,
-                    backgroundColor: Colors.transparent,
-                    color: MilaColors.cyan,
-                  )
-                else
-                  const SizedBox(height: 2),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(18),
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF0D1422),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: MilaColors.cardBorder),
-                        ),
-                        child: Stack(
-                          children: [
-                            if (webController != null)
-                              WebViewWidget(controller: webController)
-                            else
-                              Center(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const AdaptiveOrb(
-                                      size: 112,
-                                      mood: OrbMood.thinking,
-                                      level: 0.7,
-                                    ),
-                                    const SizedBox(height: 18),
-                                    Text(
-                                      l10n.pick(
-                                        ru: 'Открываю MILA...',
-                                        en: 'Opening MILA...',
-                                        uz: 'MILA ochilmoqda...',
-                                      ),
-                                      style: text.titleMedium,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            if (_webError.isNotEmpty)
-                              Positioned.fill(
-                                child: ColoredBox(
-                                  color: MilaColors.background.withValues(
-                                    alpha: 0.94,
-                                  ),
-                                  child: Center(
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(22),
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          const AdaptiveOrb(
-                                            size: 116,
-                                            mood: OrbMood.error,
-                                            level: 0.7,
-                                          ),
-                                          const SizedBox(height: 18),
-                                          Text(
-                                            l10n.pick(
-                                              ru: 'Не удалось открыть web MILA',
-                                              en: 'Could not open web MILA',
-                                              uz: 'Web MILA ochilmadi',
-                                            ),
-                                            textAlign: TextAlign.center,
-                                            style: text.titleMedium,
-                                          ),
-                                          const SizedBox(height: 8),
-                                          Text(
-                                            _webError,
-                                            textAlign: TextAlign.center,
-                                            style: text.bodySmall?.copyWith(
-                                              color: MilaColors.textSecondary,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 18),
-                                          GradientButton(
-                                            label: l10n.pick(
-                                              ru: 'Повторить',
-                                              en: 'Try again',
-                                              uz: 'Qayta urinish',
-                                            ),
-                                            icon: Icons.refresh_rounded,
-                                            onPressed: _setupWebVoice,
-                                          ),
-                                          const SizedBox(height: 10),
-                                          GhostButton(
-                                            label: l10n.pick(
-                                              ru: 'Нативный Live',
-                                              en: 'Native Live',
-                                              uz: 'Native Live',
-                                            ),
-                                            icon: Icons.mic_rounded,
-                                            onPressed: () => setState(
-                                              () => _useNativeVoice = true,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
+                  const Spacer(),
+                  const AdaptiveOrb(
+                    size: 184,
+                    mood: OrbMood.attention,
+                    level: 0.68,
+                  ),
+                  const SizedBox(height: 28),
+                  Text(
+                    l10n.pick(
+                      ru: 'MILA Live из Agentic OS',
+                      en: 'Agentic OS MILA Live',
+                      uz: 'Agentic OS MILA Live',
+                    ),
+                    textAlign: TextAlign.center,
+                    style: text.headlineSmall,
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    l10n.pick(
+                      ru: 'Открываю веб-версию с тем же голосом, русской речью и настройками, что уже работают в Agentic OS.',
+                      en: 'Opening the web version with the same voice, speech behavior and settings that already work in Agentic OS.',
+                      uz: 'Agentic OS’da ishlayotgan bir xil ovoz va sozlamali web versiya ochilmoqda.',
+                    ),
+                    textAlign: TextAlign.center,
+                    style: text.bodyMedium?.copyWith(
+                      color: MilaColors.textSecondary,
                     ),
                   ),
-                ),
-              ],
+                  if (_webLaunchError.isNotEmpty) ...[
+                    const SizedBox(height: 18),
+                    GlassCard(
+                      borderColor: MilaColors.danger.withValues(alpha: 0.4),
+                      child: Text(
+                        _webLaunchError,
+                        textAlign: TextAlign.center,
+                        style: text.bodySmall,
+                      ),
+                    ),
+                  ],
+                  const Spacer(),
+                  GradientButton(
+                    label: l10n.pick(
+                      ru: 'Открыть web MILA',
+                      en: 'Open web MILA',
+                      uz: 'Web MILA’ni ochish',
+                    ),
+                    icon: Icons.open_in_browser_rounded,
+                    onPressed: () {
+                      setState(() => _webLaunchAttempted = false);
+                      unawaited(_openWebVoice());
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  GhostButton(
+                    label: l10n.pick(
+                      ru: 'Нативный Live как запасной',
+                      en: 'Use native Live fallback',
+                      uz: 'Native Live zaxira rejimi',
+                    ),
+                    icon: Icons.mic_rounded,
+                    onPressed: () => setState(() => _useNativeVoice = true),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
