@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "67459803902",
+    "project_id": "mila-agentic-os",
+    "storage_bucket": "mila-agentic-os.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:67459803902:android:8610853090158eb77dd3af",
+        "android_client_info": {
+          "package_name": "app.milaai.mila"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCCm0dm6ZQeTZluvBOcqbQCgCJORFl6BEE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
