@@ -182,8 +182,10 @@ class VoiceController extends StateNotifier<VoiceState> {
         return;
       }
 
+      final settings = _ref.read(settingsProvider);
       final hasAgenticOsVoice = await _hasAgenticOsVoiceConfig();
-      if (hasAgenticOsVoice) {
+      if (settings.voiceTransport == MilaVoiceTransport.livekit &&
+          hasAgenticOsVoice) {
         if (await _startLiveKitIfAvailable()) {
           return;
         }
@@ -197,7 +199,6 @@ class VoiceController extends StateNotifier<VoiceState> {
 
       final credentials = await _liveCredentials();
 
-      final settings = _ref.read(settingsProvider);
       final systemPrompt = _ref
           .read(llmServiceProvider)
           .buildSystemPrompt(forVoice: true);
@@ -291,6 +292,8 @@ class VoiceController extends StateNotifier<VoiceState> {
   }
 
   void sendVideoFrame(Uint8List jpeg) {
+    // Direct Gemini Live accepts inline video frames. LiveKit sessions publish
+    // audio through the room; visual context is handled by Direct mode for now.
     if (state.active && !_usingLiveKit) _client?.sendVideoFrame(jpeg);
   }
 

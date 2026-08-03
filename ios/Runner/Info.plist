@@ -10,6 +10,8 @@
 	<string>MILA</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>MILA uses the microphone for real-time voice conversations.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>MILA uses the camera when you ask the assistant to see what is in front of you.</string>
 	<key>NSContactsUsageDescription</key>
 	<string>MILA can find and connect with people from your contacts.</string>
 	<key>NSCalendarsUsageDescription</key>

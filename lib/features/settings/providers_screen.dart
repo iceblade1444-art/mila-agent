@@ -654,6 +654,44 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
                   const SizedBox(height: 16),
                   Text(
                     l10n.pick(
+                      ru: 'Подключение звонка',
+                      en: 'Call connection',
+                      uz: 'Qo\'ng\'iroq ulanishi',
+                    ),
+                    style: text.labelMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  enumChips(
+                    MilaVoiceTransport.values,
+                    settings.voiceTransport,
+                    (v) => switch (v) {
+                      MilaVoiceTransport.direct => l10n.pick(
+                        ru: 'Direct Gemini',
+                        en: 'Direct Gemini',
+                        uz: 'Direct Gemini',
+                      ),
+                      MilaVoiceTransport.livekit => l10n.pick(
+                        ru: 'LiveKit',
+                        en: 'LiveKit',
+                        uz: 'LiveKit',
+                      ),
+                    },
+                    (v) => updateVoiceProfile(
+                      settings.copyWith(voiceTransport: v),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    l10n.pick(
+                      ru: 'Direct передаёт голос и камеру прямо в Gemini Live. LiveKit используйте для комнат Agentic OS и устойчивого аудио.',
+                      en: 'Direct sends voice and camera straight to Gemini Live. Use LiveKit for Agentic OS rooms and stable audio.',
+                      uz: 'Direct ovoz va kamerani bevosita Gemini Live ga yuboradi. LiveKit Agentic OS xonalari va barqaror audio uchun.',
+                    ),
+                    style: text.bodySmall,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    l10n.pick(
                       ru: 'Стиль разговора',
                       en: 'Conversation style',
                       uz: 'Suhbat uslubi',
