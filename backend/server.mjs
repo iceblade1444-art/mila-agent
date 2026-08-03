@@ -92,6 +92,7 @@ export function createMilaServer(options = {}) {
   const cfg = {...config, ...options.config};
   const fetchImpl = options.fetchImpl || globalThis.fetch;
   const db = options.db || createAppDb(cfg.dbPath);
+  const pendingMcpCalls = new Map();
 
   function send(res, status, body, headers = {}) {
     const payload = typeof body === 'string' ? body : JSON.stringify(body);
@@ -150,6 +151,92 @@ export function createMilaServer(options = {}) {
     };
   }
 
+  function sanitizeMcpTool(server, tool = {}) {
+    return {
+      serverId: server.id,
+      server: server.name,
+      kind: server.kind,
+      status: server.status || 'stopped',
+      name: String(tool.name || '').slice(0, 160),
+      description: String(tool.description || '').slice(0, 600),
+      inputSchema: tool.inputSchema || null,
+    };
+  }
+
+  function sanitizeMcpServers(servers) {
+    return (Array.isArray(servers) ? servers : []).map((server) => ({
+      id: String(server.id || '').slice(0, 160),
+      name: String(server.name || '').slice(0, 160),
+      kind: String(server.kind || '').slice(0, 80),
+      desc: String(server.desc || '').slice(0, 500),
+      status: String(server.status || 'stopped').slice(0, 40),
+      tools: (Array.isArray(server.tools) ? server.tools : [])
+        .slice(0, 100)
+        .map((tool) => sanitizeMcpTool(server, tool)),
+    })).filter((server) => server.id && server.name);
+  }
+
+  function cleanMcpCallArgs(body = {}) {
+    const rawArgs = body.args && typeof body.args === 'object' && !Array.isArray(body.args)
+      ? body.args
+      : {};
+    const safeArgs = JSON.parse(JSON.stringify(rawArgs));
+    return {
+      server: String(body.server || body.serverId || '').trim().slice(0, 160),
+      tool: String(body.tool || body.name || '').trim().slice(0, 160),
+      args: safeArgs,
+    };
+  }
+
+  function cleanupMcpConfirmations() {
+    const now = Date.now();
+    for (const [token, value] of pendingMcpCalls) {
+      if (value.expiresAt <= now) pendingMcpCalls.delete(token);
+    }
+  }
+
+  function stageMcpCall(session, body) {
+    cleanupMcpConfirmations();
+    const call = cleanMcpCallArgs(body);
+    if (!call.server || !call.tool) {
+      const error = new Error('MCP server and tool are required');
+      error.status = 400;
+      throw error;
+    }
+    const argsText = JSON.stringify(call.args);
+    if (argsText.length > 50000) {
+      const error = new Error('MCP tool arguments are too large');
+      error.status = 413;
+      throw error;
+    }
+    const token = crypto.randomBytes(24).toString('base64url');
+    const summary = `Call MCP tool "${call.tool}" on "${call.server}"`;
+    pendingMcpCalls.set(token, {
+      sessionId: session.id,
+      call,
+      summary,
+      expiresAt: Date.now() + 5 * 60 * 1000,
+    });
+    return {
+      confirmationRequired: true,
+      confirmationToken: token,
+      summary,
+      expiresInSeconds: 300,
+    };
+  }
+
+  function consumeMcpCall(session, token) {
+    cleanupMcpConfirmations();
+    const record = pendingMcpCalls.get(token);
+    pendingMcpCalls.delete(token);
+    if (!record || record.sessionId !== session.id || record.expiresAt <= Date.now()) {
+      const error = new Error('Confirmation expired or does not match this MCP call');
+      error.status = 409;
+      throw error;
+    }
+    return record.call;
+  }
+
   function createCode(label, owner = null, accountGrant = '') {
     const code = crypto.randomBytes(4).toString('hex').toUpperCase();
     const cleanOwner = normalizeOwner(owner);
@@ -199,6 +286,7 @@ export function createMilaServer(options = {}) {
       headers: {
         Authorization: `Bearer ${cfg.agenticOsToken}`,
         ...(options.body ? {'Content-Type': 'application/json'} : {}),
+        ...(options.headers || {}),
       },
       body: options.body ? JSON.stringify(options.body) : undefined,
     });
@@ -540,6 +628,56 @@ export function createMilaServer(options = {}) {
             liveModel: mila.liveModel || cfg.geminiLiveModel,
           },
           syncedAt: Date.now(),
+        });
+        return;
+      }
+
+      if (req.method === 'GET' && url.pathname === '/v1/tools/mcp') {
+        const session = requireSession(req, res);
+        if (!session) return;
+        const servers = sanitizeMcpServers(await agenticRequest('/api/mcp/servers'));
+        sendJson(res, 200, {
+          ok: true,
+          account: publicSession(session),
+          servers,
+          tools: servers.flatMap((server) => server.tools || []),
+          syncedAt: Date.now(),
+        });
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/v1/tools/mcp/call') {
+        const session = requireSession(req, res);
+        if (!session) return;
+        const body = await readJson(req);
+        if (!body.confirmationToken) {
+          sendJson(res, 202, stageMcpCall(session, body));
+          return;
+        }
+
+        const call = consumeMcpCall(session, String(body.confirmationToken || ''));
+        const servers = sanitizeMcpServers(await agenticRequest('/api/mcp/servers'));
+        const server = servers.find((item) => item.id === call.server || item.name === call.server);
+        if (!server) {
+          sendJson(res, 404, {error: `MCP server not found: ${call.server}`});
+          return;
+        }
+        if (server.status !== 'active') {
+          await agenticRequest(`/api/mcp/servers/${encodeURIComponent(server.id)}/connect`, {
+            method: 'POST',
+            headers: {'X-Agent-Name': publicSession(session).owner.name || session.label, 'X-Agent-Source': 'mila-mobile'},
+          });
+        }
+        const result = await agenticRequest(`/api/mcp/servers/${encodeURIComponent(server.id)}/call`, {
+          method: 'POST',
+          headers: {'X-Agent-Name': publicSession(session).owner.name || session.label, 'X-Agent-Source': 'mila-mobile'},
+          body: {tool: call.tool, args: call.args},
+        });
+        sendJson(res, 200, {
+          ok: true,
+          server: {id: server.id, name: server.name, kind: server.kind},
+          tool: call.tool,
+          result: result.result,
         });
         return;
       }

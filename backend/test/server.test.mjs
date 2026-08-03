@@ -438,6 +438,95 @@ test('mobile session synchronizes tasks through the private Agentic OS proxy', a
   }));
 });
 
+test('mobile session can discover and confirm Agentic OS MCP tool calls safely', async () => {
+  const calls = [];
+  const fetchImpl = async (url, request = {}) => {
+    calls.push({url, request});
+    assert.equal(request.headers.Authorization, 'Bearer agentic-secret');
+    const pathname = new URL(url).pathname;
+    if (pathname === '/api/mcp/servers') {
+      return Response.json([
+        {
+          id: 'mcp_obsidian',
+          name: 'obsidian',
+          kind: 'obsidian',
+          desc: 'Shared vault',
+          status: 'stopped',
+          command: 'node',
+          tools: [
+            {
+              name: 'obsidian_search_notes',
+              description: 'Search notes',
+              inputSchema: {type: 'object'},
+            },
+          ],
+        },
+      ]);
+    }
+    if (pathname === '/api/mcp/servers/mcp_obsidian/connect') {
+      return Response.json({ok: true, tools: [{name: 'obsidian_search_notes'}]});
+    }
+    if (pathname === '/api/mcp/servers/mcp_obsidian/call') {
+      const body = JSON.parse(request.body);
+      assert.equal(request.headers['X-Agent-Source'], 'mila-mobile');
+      assert.equal(body.tool, 'obsidian_search_notes');
+      assert.deepEqual(body.args, {query: 'MILA'});
+      return Response.json({ok: true, result: {content: [{type: 'text', text: 'Found MILA'}]}});
+    }
+    return Response.json({error: 'unexpected path'}, {status: 404});
+  };
+
+  await withServer(
+    {
+      fetchImpl,
+      config: {
+        adminToken: 'admin-secret',
+        agenticOsUrl: 'http://agentic-os.internal:8787',
+        agenticOsToken: 'agentic-secret',
+      },
+    },
+    async (baseUrl) => {
+      const {token} = await connectMobile(baseUrl, 'Creator phone', {
+        id: 'creator',
+        email: 'creator@example.com',
+        name: 'Creator',
+        role: 'Creator',
+      });
+      const headers = {Authorization: `Bearer ${token}`};
+
+      const tools = await fetch(`${baseUrl}/v1/tools/mcp`, {headers});
+      assert.equal(tools.status, 200);
+      const toolsJson = await tools.json();
+      assert.equal(toolsJson.tools[0].name, 'obsidian_search_notes');
+      assert.equal(JSON.stringify(toolsJson).includes('command'), false);
+
+      const staged = await fetch(`${baseUrl}/v1/tools/mcp/call`, {
+        method: 'POST',
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          server: 'obsidian',
+          tool: 'obsidian_search_notes',
+          args: {query: 'MILA'},
+        }),
+      });
+      assert.equal(staged.status, 202);
+      const stagedJson = await staged.json();
+      assert.equal(stagedJson.confirmationRequired, true);
+
+      const confirmed = await fetch(`${baseUrl}/v1/tools/mcp/call`, {
+        method: 'POST',
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: JSON.stringify({confirmationToken: stagedJson.confirmationToken}),
+      });
+      assert.equal(confirmed.status, 200);
+      assert.equal((await confirmed.json()).result.content[0].text, 'Found MILA');
+    },
+  );
+
+  assert.ok(calls.some((call) => call.url.endsWith('/api/mcp/servers/mcp_obsidian/connect')));
+  assert.ok(calls.some((call) => call.url.endsWith('/api/mcp/servers/mcp_obsidian/call')));
+});
+
 test('app update metadata can be saved and checked', async () => {
   await withServer(
     {config: {adminToken: 'secret'}},
