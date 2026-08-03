@@ -25,6 +25,15 @@ class SettingsScreen extends ConsumerWidget {
     final text = Theme.of(context).textTheme;
     final profile = ref.watch(profileProvider);
     final settings = ref.watch(settingsProvider);
+    final packageInfo = ref.watch(installedPackageProvider);
+    final installedVersion = packageInfo.maybeWhen(
+      data: (info) => '${info.version}+${info.buildNumber}',
+      orElse: () => '...',
+    );
+    final installedVersionName = packageInfo.maybeWhen(
+      data: (info) => info.version,
+      orElse: () => '...',
+    );
     final l10n = context.l10n;
     final providerLabel = switch (settings.provider) {
       LlmProviderKind.openaiAccount || LlmProviderKind.openai => 'Gemini',
@@ -551,8 +560,7 @@ class SettingsScreen extends ConsumerWidget {
               onTap: () => showAboutDialog(
                 context: context,
                 applicationName: 'MILA',
-                applicationVersion:
-                    '${UpdateService.currentVersion}+${UpdateService.currentVersionCode}',
+                applicationVersion: installedVersion,
                 applicationLegalese: l10n.pick(
                   ru: 'AI-голосовой помощник.\nГолос: Gemini Live API · Текст: Gemini.',
                   en: 'AI Voice Assistant.\nVoice: Gemini Live API · Text: Gemini.',
@@ -568,7 +576,7 @@ class SettingsScreen extends ConsumerWidget {
                 en: 'Check for Updates',
                 uz: 'Yangilanishlarni tekshirish',
               ),
-              value: UpdateService.currentVersion,
+              value: installedVersionName,
               onTap: checkUpdates,
             ),
             const SizedBox(height: 10),

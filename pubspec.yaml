@@ -2,7 +2,7 @@ name: mila
 description: "MILA - AI Voice Assistant. Real-time voice and text intelligence via Gemini."
 publish_to: 'none'
 
-version: 1.5.1+23
+version: 1.5.2+24
 
 environment:
   sdk: ^3.11.5
@@ -40,6 +40,7 @@ dependencies:
 
   # Integrations
   url_launcher: ^6.3.1
+  package_info_plus: ^8.3.0
   add_2_calendar: 3.0.1
 
   # Utils

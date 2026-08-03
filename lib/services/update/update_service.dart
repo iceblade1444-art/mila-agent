@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../core/config/app_config.dart';
 import '../storage/stores.dart';
@@ -37,18 +38,17 @@ class AppUpdateInfo {
 class UpdateService {
   const UpdateService(this._ref);
 
-  static const currentVersion = String.fromEnvironment(
-    'APP_VERSION',
-    defaultValue: '1.4.0',
-  );
-  static const currentVersionCode = int.fromEnvironment(
-    'APP_VERSION_CODE',
-    defaultValue: 17,
-  );
-
   final Ref _ref;
 
+  Future<PackageInfo> installedPackage() => PackageInfo.fromPlatform();
+
   Future<AppUpdateInfo> check() async {
+    final package = await installedPackage();
+    final currentVersion = package.version.trim().isEmpty
+        ? '0.0.0'
+        : package.version.trim();
+    final currentVersionCode =
+        int.tryParse(package.buildNumber.trim()) ?? 0;
     final secure = _ref.read(secureStoreProvider);
     final baseUrl = AppConfig.configuredBackendUrl(
       await secure.read(SecureStore.milaBackendUrl),
@@ -75,3 +75,7 @@ class UpdateService {
 }
 
 final updateServiceProvider = Provider<UpdateService>(UpdateService.new);
+
+final installedPackageProvider = FutureProvider<PackageInfo>(
+  (ref) => ref.watch(updateServiceProvider).installedPackage(),
+);
