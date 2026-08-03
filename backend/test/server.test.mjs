@@ -262,6 +262,7 @@ test('connected mobile can use the secure Gemini text proxy without receiving th
     assert.equal(request.headers['x-goog-api-key'], 'gemini-secret');
     const body = JSON.parse(request.body);
     assert.equal(body.contents[0].parts[0].text, 'Hello');
+    assert.deepEqual(body.tools, [{googleSearch: {}}]);
     return Response.json({
       candidates: [{content: {parts: [{text: 'Hello from MILA'}]}}],
     });

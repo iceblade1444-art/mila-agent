@@ -107,6 +107,9 @@ class GeminiTextProvider implements LlmProvider {
             {'text': systemPrompt},
           ],
         },
+        'tools': [
+          {'googleSearch': {}},
+        ],
         'contents': [
           for (final m in messages)
             {
@@ -200,6 +203,7 @@ class MilaServerGeminiProvider implements LlmProvider {
           body: jsonEncode({
             'model': model,
             'systemPrompt': systemPrompt,
+            'groundWithGoogleSearch': true,
             'messages': [
               for (final message in messages)
                 {

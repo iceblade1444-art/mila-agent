@@ -950,6 +950,7 @@ async function generateGeminiChat({body, cfg, fetchImpl}) {
       },
       body: JSON.stringify({
         ...(body.systemPrompt ? {systemInstruction: {parts: [{text: String(body.systemPrompt).slice(0, 30000)}]}} : {}),
+        ...(body.groundWithGoogleSearch === false ? {} : {tools: [{googleSearch: {}}]}),
         contents,
       }),
     },
