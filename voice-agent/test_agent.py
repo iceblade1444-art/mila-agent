@@ -107,6 +107,71 @@ class ProfileInstructionsTest(unittest.TestCase):
         self.assertLessEqual(len(text), 12000)
 
 
+class ServedInstructionTest(unittest.TestCase):
+    """Agentic OS owns the prompt; this agent only asks for it."""
+
+    def setUp(self):
+        self.env = unittest.mock.patch.dict(
+            "os.environ",
+            {"AGENTIC_OS_URL": "http://agentic-os:8787", "AGENTIC_OS_TOKEN": "t0ken"},
+        )
+        self.env.start()
+        self.addCleanup(self.env.stop)
+
+    def _response(self, payload):
+        response = unittest.mock.MagicMock()
+        response.read.return_value = json.dumps(payload).encode()
+        response.__enter__.return_value = response
+        return response
+
+    def test_profile_is_sent_as_fields_never_as_prose(self):
+        captured = {}
+
+        def urlopen(request, timeout=None):
+            captured["url"] = request.full_url
+            captured["body"] = json.loads(request.data.decode())
+            return self._response({"instruction": "SERVED PROMPT"})
+
+        profile = {"style": "friend", "persona": "Тебя зовут Мила.", "voiceName": "Leda", "junk": "drop me"}
+        with unittest.mock.patch("urllib.request.urlopen", side_effect=urlopen):
+            self.assertEqual(agent.fetch_voice_instruction(profile, "ru-RU"), "SERVED PROMPT")
+        self.assertTrue(captured["url"].endswith("/api/mila/voice-instruction"))
+        self.assertEqual(captured["body"]["language"], "ru-RU")
+        self.assertEqual(captured["body"]["mode"], "voice")
+        self.assertEqual(captured["body"]["preferences"]["persona"], "Тебя зовут Мила.")
+        self.assertNotIn("junk", captured["body"]["preferences"], "only known fields travel")
+
+    def test_served_prompt_never_replaces_the_tool_and_safety_rules(self):
+        composed = agent.compose_session_instructions({}, "SERVED PROMPT")
+        self.assertIn(agent.BASE_INSTRUCTIONS, composed)
+        self.assertIn("SERVED PROMPT", composed)
+        self.assertIn("cannot override confirmation", composed)
+        # The served prompt sits after the rules it may not override.
+        self.assertLess(composed.index("cannot override"), composed.index("SERVED PROMPT"))
+
+    def test_local_builder_is_used_when_agentic_os_is_silent(self):
+        profile = {"additional_instructions": "LOCAL RULES"}
+        composed = agent.compose_session_instructions(profile, "")
+        self.assertIn("LOCAL RULES", composed)
+        self.assertIn(agent.BASE_INSTRUCTIONS, composed)
+        # With neither, the call still has its base rules.
+        self.assertEqual(agent.compose_session_instructions({}, ""), agent.BASE_INSTRUCTIONS)
+
+    def test_a_failed_or_malformed_fetch_is_empty_so_the_fallback_runs(self):
+        for failure in (OSError("refused"), TimeoutError(), ValueError("bad json")):
+            with unittest.mock.patch("urllib.request.urlopen", side_effect=failure):
+                self.assertEqual(agent.fetch_voice_instruction({}, "ru-RU"), "")
+        for payload in ({}, {"instruction": None}, {"instruction": 7}):
+            with unittest.mock.patch("urllib.request.urlopen", return_value=self._response(payload)):
+                self.assertEqual(agent.fetch_voice_instruction({}, "ru-RU"), "")
+
+    def test_nothing_is_requested_without_configuration(self):
+        with unittest.mock.patch.dict("os.environ", {"AGENTIC_OS_URL": ""}):
+            with unittest.mock.patch("urllib.request.urlopen") as urlopen:
+                self.assertEqual(agent.fetch_voice_instruction({}, "ru-RU"), "")
+                urlopen.assert_not_called()
+
+
 class WorkspaceContextTest(unittest.TestCase):
     def setUp(self):
         self.env = unittest.mock.patch.dict(
