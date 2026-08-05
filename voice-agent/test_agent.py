@@ -213,5 +213,46 @@ class WorkspaceContextTest(unittest.TestCase):
                 urlopen.assert_not_called()
 
 
+class ErpInstructionTest(unittest.TestCase):
+    def test_failed_room_metadata_does_not_block_live_fallback(self):
+        text = agent.compose_erp_instructions({
+            "ok": False,
+            "instruction": "ERP live context is unavailable for this voice room.",
+        })
+        self.assertEqual(text, "")
+
+    def test_finished_goods_are_promoted_above_production_counts(self):
+        text = agent.compose_erp_instructions({
+            "ok": True,
+            "finishedGoods": {
+                "source": "/warehouse-stock + /warehouse-map",
+                "pieces": 535,
+                "packages": 9,
+                "models": 1,
+                "topModels": [
+                    {
+                        "model": "PJ1118-2922",
+                        "name": "Фут-штаны",
+                        "order": "SO-2026-000017",
+                        "pieces": 535,
+                        "section": "N",
+                        "cell": "N-01",
+                        "shelf": "S1",
+                    }
+                ],
+            },
+            "production": {
+                "productionOutput": 18350,
+                "activeOrders": 47,
+            },
+            "instruction": "Finished goods now: 535 pcs, 9 packages, 1 models.",
+        })
+        self.assertIn("Answer for 'сколько готовых изделий на складе': 535 pcs", text)
+        self.assertIn("PJ1118-2922", text)
+        self.assertIn("SO-2026-000017", text)
+        self.assertIn("Do not replace this with production output", text)
+        self.assertIn("Finished goods now: 535 pcs", text)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -327,14 +327,103 @@ def compact_json(value: object, limit: int = ERP_CONTEXT_LIMIT) -> str:
     return text[:limit]
 
 
+def _as_number(value: object, fallback: int = 0) -> int:
+    try:
+        if value is None:
+            return fallback
+        number = float(value)
+    except (TypeError, ValueError):
+        return fallback
+    if not number.is_integer():
+        return int(number)
+    return int(number)
+
+
+def _as_text(value: object, limit: int = 160) -> str:
+    return " ".join(str(value or "").split())[:limit]
+
+
+def summarize_finished_goods_for_prompt(erp: dict) -> str:
+    """Make the finished-goods facts impossible to confuse with production.
+
+    The raw ERP snapshot can be large and contains similarly named production
+    counters. A compact headline at the top of the prompt gives the live model
+    a stable answer for the most common voice question.
+    """
+    fg = erp.get("finishedGoods") if isinstance(erp.get("finishedGoods"), dict) else {}
+    if not fg:
+        cards = erp.get("cards") if isinstance(erp.get("cards"), dict) else {}
+        fg = cards.get("erp_finished_goods_stock") if isinstance(cards.get("erp_finished_goods_stock"), dict) else {}
+    if not fg:
+        return ""
+    pieces = _as_number(
+        fg.get("pieces")
+        or fg.get("total_pieces")
+        or fg.get("available_pieces")
+        or fg.get("quantity")
+    )
+    packages = _as_number(fg.get("packages") or fg.get("total_packages"))
+    models = _as_number(fg.get("models") or fg.get("total_models"))
+    rows = fg.get("topModels") or fg.get("top_models") or fg.get("items") or []
+    row_lines = []
+    if isinstance(rows, list):
+        for row in rows[:5]:
+            if not isinstance(row, dict):
+                continue
+            model = _as_text(row.get("model") or row.get("model_code") or row.get("sku") or row.get("name"))
+            name = _as_text(row.get("name") or row.get("model_name") or row.get("title"))
+            order = _as_text(row.get("order") or row.get("order_no") or row.get("production_no"))
+            row_pieces = _as_number(
+                row.get("pieces")
+                or row.get("total_pieces")
+                or row.get("available_pieces")
+                or row.get("quantity")
+            )
+            location = "/".join(
+                part for part in (
+                    _as_text(row.get("section"), 40),
+                    _as_text(row.get("cell"), 40),
+                    _as_text(row.get("shelf"), 40),
+                )
+                if part
+            )
+            bits = [
+                model or name or "unknown model",
+                f"{row_pieces} pcs",
+            ]
+            if name and name != model:
+                bits.append(name)
+            if order:
+                bits.append(f"order {order}")
+            if location:
+                bits.append(f"location {location}")
+            row_lines.append(", ".join(bits))
+    return "\n".join(
+        [
+            "Finished goods warehouse quick facts:",
+            "Source: /warehouse-stock + /warehouse-map only.",
+            f"Answer for 'сколько готовых изделий на складе': {pieces} pcs.",
+            f"Packages: {packages}. Models: {models}.",
+            f"Rows: {'; '.join(row_lines) if row_lines else 'no model rows returned'}.",
+            "Do not replace this with production output, active orders, material inventory, GM summary, or memory.",
+        ]
+    )
+
+
 def compose_erp_instructions(erp: object) -> str:
     if not isinstance(erp, dict):
         return ""
+    # A failed room-metadata fetch must not block the agent from doing its own
+    # live fallback request to Agentic OS. Returning an "unavailable" prompt here
+    # made MILA say she knew ERP existed while not having the actual facts.
+    if erp.get("ok") is False:
+        return ""
     instruction = str(erp.get("instruction") or "").strip()
+    finished_goods_summary = summarize_finished_goods_for_prompt(erp)
     if instruction:
-        body = instruction
+        body = f"{finished_goods_summary}\n\n{instruction}".strip()
     else:
-        body = compact_json(erp, ERP_CONTEXT_LIMIT - 1200)
+        body = f"{finished_goods_summary}\n\n{compact_json(erp, ERP_CONTEXT_LIMIT - 2000)}".strip()
     return (
         "Authoritative live ERP context for this room. Use it before answering "
         "questions about Milana ERP, production, sewing flows, warehouse, "
