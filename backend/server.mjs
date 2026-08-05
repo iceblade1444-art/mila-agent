@@ -1044,6 +1044,11 @@ export function createMilaServer(options = {}) {
         const erpContext = shouldAttachErpContext(body)
           ? await buildErpVoiceBriefing()
           : null;
+        const directErpAnswer = maybeAnswerErpDirectly(body, erpContext);
+        if (directErpAnswer) {
+          sendJson(res, 200, directErpAnswer);
+          return;
+        }
         sendJson(res, 200, await generateGeminiChat({
           body,
           cfg,
@@ -1238,13 +1243,81 @@ function shouldAttachErpContext(body) {
     /(ombor|tayyor|mahsulot|ishlab|buyurtma|tikuv|qadoq|bichuv|moliya|daromad|model)/i.test(text);
 }
 
+function latestChatText(body) {
+  const messages = Array.isArray(body?.messages) ? body.messages : [];
+  const last = [...messages].reverse().find((message) => message?.role !== 'assistant');
+  return String(last?.content || '').trim();
+}
+
+function isFinishedGoodsQuestion(text) {
+  const normalized = String(text || '').toLowerCase();
+  return (
+    /(готов(ых|ые|ая|ой|ую)?\s+(издел|продукц|товар|вещ)|склад\s+готов|готов.*склад|warehouse.*finished|finished.*warehouse|finished\s+goods)/i.test(normalized) ||
+    /(склад|остатк|warehouse|stock|ombor)/i.test(normalized) &&
+      /(сколько|количеств|штук|pcs|items|вещ|товар|mahsulot|qancha|nechta)/i.test(normalized)
+  );
+}
+
+function directErpNumber(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function directErpText(value, max = 160) {
+  return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
+}
+
+function directFinishedGoodsAnswer(erpContext) {
+  const fg = erpContext?.finishedGoods || {};
+  const pieces = directErpNumber(
+    fg.pieces ??
+      fg.total_pieces ??
+      fg.available_pieces ??
+      fg.quantity,
+    Number.NaN,
+  );
+  if (!Number.isFinite(pieces)) return null;
+  const packages = directErpNumber(fg.packages ?? fg.total_packages, Number.NaN);
+  const models = directErpNumber(fg.models ?? fg.total_models, Number.NaN);
+  const top = Array.isArray(fg.topModels) ? fg.topModels[0] : null;
+  const details = [];
+  if (Number.isFinite(packages)) details.push(`${packages} упаковок`);
+  if (Number.isFinite(models)) details.push(`${models} модель`);
+  if (top) {
+    const model = directErpText(top.model || top.name);
+    const name = directErpText(top.name);
+    const rowPieces = directErpNumber(top.pieces, Number.NaN);
+    const location = [top.section, top.cell, top.shelf].map((item) => directErpText(item, 40)).filter(Boolean).join('/');
+    const topDetails = [
+      model ? `${model}${name && name !== model ? ` (${name})` : ''}` : '',
+      Number.isFinite(rowPieces) ? `${rowPieces} шт.` : '',
+      location ? `локация ${location}` : '',
+    ].filter(Boolean).join(', ');
+    if (topDetails) details.push(`основная строка: ${topDetails}`);
+  }
+  return {
+    text: `На складе готовых изделий сейчас ${pieces} шт.${details.length ? ` ${details.join('; ')}.` : ''}`,
+    model: 'erp-direct',
+    source: '/warehouse-stock + /warehouse-map',
+  };
+}
+
+function maybeAnswerErpDirectly(body, erpContext) {
+  if (!erpContext?.ok) return null;
+  const latest = latestChatText(body);
+  if (isFinishedGoodsQuestion(latest)) {
+    return directFinishedGoodsAnswer(erpContext);
+  }
+  return null;
+}
+
 function composeMobileErpPrompt(erpContext) {
   if (!erpContext) return '';
   const instruction = String(erpContext.instruction || '').trim();
   const fallback = JSON.stringify(erpContext, null, 2);
   return [
     'MOBILE MILA ERP FACTS.',
-    'For Milana ERP questions, answer only from the live ERP context below. If the exact fact is absent, say that you cannot verify it right now. Do not invent numbers, model names, orders, warehouse cells, dates, or prices.',
+    'For Milana ERP questions, answer only from the live ERP context below. If erpContext.ok is true, never say you failed to get ERP data. If the exact fact is absent, say only that this exact field is not present in the returned ERP snapshot. Do not invent numbers, model names, orders, warehouse cells, dates, or prices.',
     'Critical warehouse rule: готовые изделия / finished goods stock must come only from /warehouse-stock and /warehouse-map, exposed as finishedGoods / erp_finished_goods_stock. Never use production output, material inventory, GM summary, or memory as the answer for finished goods.',
     'If the user asks "сколько готовых изделий на складе", answer the finishedGoods.pieces value and, if available, mention packages/models and top model rows.',
     instruction || fallback,

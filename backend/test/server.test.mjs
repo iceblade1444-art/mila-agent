@@ -294,9 +294,8 @@ test('connected mobile can use the secure Gemini text proxy without receiving th
   );
 });
 
-test('Gemini mobile chat grounds finished goods answers in live ERP context', async () => {
+test('Gemini mobile chat answers finished goods stock directly from live ERP context', async () => {
   const calls = [];
-  let geminiBody = null;
   const fetchImpl = async (url, request = {}) => {
     calls.push({url, request});
     const pathname = new URL(url).pathname;
@@ -334,11 +333,7 @@ test('Gemini mobile chat grounds finished goods answers in live ERP context', as
         server: {tools: [{name: 'erp_finished_goods_stock'}]},
       });
     }
-    assert.match(url, /gemini-2\.5-flash:generateContent$/);
-    geminiBody = JSON.parse(request.body);
-    return Response.json({
-      candidates: [{content: {parts: [{text: 'На складе готовых изделий 535 штук.'}]}}],
-    });
+    throw new Error(`Gemini should not be called for direct ERP facts: ${url}`);
   };
 
   await withServer(
@@ -371,11 +366,77 @@ test('Gemini mobile chat grounds finished goods answers in live ERP context', as
         }),
       });
       assert.equal(response.status, 200);
-      assert.equal((await response.json()).text, 'На складе готовых изделий 535 штук.');
+      const payload = await response.json();
+      assert.equal(payload.model, 'erp-direct');
+      assert.match(payload.text, /535 шт/);
+      assert.match(payload.text, /9 упаковок/);
+      assert.match(payload.text, /1 модель/);
+      assert.match(payload.text, /PJ1118-2922/);
+      assert.equal(payload.source, '/warehouse-stock + /warehouse-map');
     },
   );
 
   assert.ok(calls.some((call) => call.url === 'http://agentic-os.internal:8787/api/erp'));
+  assert.equal(calls.filter((call) => /generateContent$/.test(call.url)).length, 0);
+});
+
+test('Gemini mobile chat receives live ERP context for non-direct ERP questions', async () => {
+  const calls = [];
+  let geminiBody = null;
+  const fetchImpl = async (url, request = {}) => {
+    calls.push({url, request});
+    const pathname = new URL(url).pathname;
+    if (pathname === '/api/erp') {
+      return Response.json({
+        ok: true,
+        baseUrl: 'https://erp.milanapremium.uz',
+        cards: {
+          erp_finished_goods_stock: {
+            total_pieces: 535,
+            total_packages: 9,
+            total_models: 1,
+            top_models: [{model_code: 'PJ1118-2922', model_name: 'Фут-штаны', total_pieces: 535}],
+          },
+        },
+        server: {tools: [{name: 'erp_finished_goods_stock'}]},
+      });
+    }
+    assert.match(url, /gemini-2\.5-flash:generateContent$/);
+    geminiBody = JSON.parse(request.body);
+    return Response.json({
+      candidates: [{content: {parts: [{text: 'ERP context attached.'}]}}],
+    });
+  };
+
+  await withServer(
+    {
+      fetchImpl,
+      config: {
+        adminToken: 'admin-secret',
+        geminiApiKey: 'gemini-secret',
+        agenticOsUrl: 'http://agentic-os.internal:8787',
+        agenticOsToken: 'agentic-secret',
+      },
+    },
+    async (baseUrl) => {
+      const {token} = await connectMobile(baseUrl);
+      const response = await fetch(`${baseUrl}/v1/gemini/chat`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gemini-2.5-flash',
+          systemPrompt: 'Be helpful',
+          messages: [{role: 'user', content: 'Мила, сделай общий ERP обзор.'}],
+        }),
+      });
+      assert.equal(response.status, 200);
+      assert.equal((await response.json()).text, 'ERP context attached.');
+    },
+  );
+
   const systemText = geminiBody.systemInstruction.parts[0].text;
   assert.match(systemText, /MOBILE MILA ERP FACTS/);
   assert.match(systemText, /535 pcs/);
