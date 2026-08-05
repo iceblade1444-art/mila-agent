@@ -435,14 +435,11 @@ def compose_erp_instructions(erp: object) -> str:
     )[:ERP_CONTEXT_LIMIT]
 
 
-def fetch_erp_snapshot_text(timeout: float = 12.0) -> str:
+def fetch_erp_snapshot_payload(timeout: float = 12.0) -> object:
     base_url = os.getenv("AGENTIC_OS_URL", "").rstrip("/")
     token = os.getenv("AGENTIC_OS_TOKEN", "")
     if not base_url or not token:
-        return json.dumps(
-            {"ok": False, "error": "Agentic OS ERP access is not configured"},
-            ensure_ascii=False,
-        )
+        return {"ok": False, "error": "Agentic OS ERP access is not configured"}
     http_request = urllib.request.Request(
         f"{base_url}/api/erp",
         headers={"Authorization": f"Bearer {token}"},
@@ -458,17 +455,26 @@ def fetch_erp_snapshot_text(timeout: float = 12.0) -> str:
             payload = {"ok": False, "status": error.code, "error": detail}
     except (OSError, TimeoutError, ValueError) as error:
         payload = {"ok": False, "error": f"ERP snapshot unavailable: {error}"}
+    return payload
+
+
+def fetch_erp_snapshot_text(timeout: float = 12.0) -> str:
+    payload = fetch_erp_snapshot_payload(timeout)
     return compact_json(payload, 65536)
 
 
-def compose_fallback_erp_snapshot_text(snapshot_text: str) -> str:
-    snapshot_text = str(snapshot_text or "").strip()
-    if not snapshot_text:
-        return ""
-    try:
-        payload = json.loads(snapshot_text)
-    except (TypeError, ValueError):
-        payload = None
+def compose_fallback_erp_snapshot_text(snapshot: object) -> str:
+    if isinstance(snapshot, str):
+        snapshot_text = snapshot.strip()
+        if not snapshot_text:
+            return ""
+        try:
+            payload = json.loads(snapshot_text)
+        except (TypeError, ValueError):
+            payload = None
+    else:
+        payload = snapshot
+        snapshot_text = compact_json(snapshot, 65536)
     finished_goods_summary = (
         summarize_finished_goods_for_prompt(payload)
         if isinstance(payload, dict)
@@ -726,7 +732,7 @@ async def mila_session(ctx: JobContext):
     if erp_instructions:
         session_instructions = f"{session_instructions}\n\n{erp_instructions}"
     else:
-        erp_snapshot = await asyncio.to_thread(fetch_erp_snapshot_text)
+        erp_snapshot = await asyncio.to_thread(fetch_erp_snapshot_payload)
         erp_snapshot_block = compose_fallback_erp_snapshot_text(erp_snapshot)
         session_instructions = (
             f"{session_instructions}\n\n"
