@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -19,7 +21,7 @@ Future<void> main() async {
   );
 
   final store = await LocalStore.open();
-  await initializeMilaFirebase();
+  unawaited(initializeMilaFirebase());
 
   runApp(
     ProviderScope(
