@@ -294,6 +294,96 @@ test('connected mobile can use the secure Gemini text proxy without receiving th
   );
 });
 
+test('Gemini mobile chat grounds finished goods answers in live ERP context', async () => {
+  const calls = [];
+  let geminiBody = null;
+  const fetchImpl = async (url, request = {}) => {
+    calls.push({url, request});
+    const pathname = new URL(url).pathname;
+    if (pathname === '/api/erp') {
+      assert.equal(request.headers.Authorization, 'Bearer agentic-secret');
+      return Response.json({
+        ok: true,
+        baseUrl: 'https://erp.milanapremium.uz',
+        cards: {
+          erp_finished_goods_stock: {
+            total_pieces: 535,
+            total_packages: 9,
+            total_models: 1,
+            top_models: [
+              {
+                model_code: 'PJ1118-2922',
+                model_name: 'Фут-штаны',
+                order_no: 'SO-2026-000017',
+                total_pieces: 535,
+                total_packages: 9,
+                section: 'N',
+                cell: 'N-01',
+                shelf: 'S1',
+              },
+            ],
+          },
+          erp_active_production: {
+            cutting_output: 14654,
+            sewing_output: 535,
+            packaging_output: 535,
+            active_work_orders: 47,
+          },
+          erp_business_control: {total_orders: 93},
+        },
+        server: {tools: [{name: 'erp_finished_goods_stock'}]},
+      });
+    }
+    assert.match(url, /gemini-2\.5-flash:generateContent$/);
+    geminiBody = JSON.parse(request.body);
+    return Response.json({
+      candidates: [{content: {parts: [{text: 'На складе готовых изделий 535 штук.'}]}}],
+    });
+  };
+
+  await withServer(
+    {
+      fetchImpl,
+      config: {
+        adminToken: 'admin-secret',
+        geminiApiKey: 'gemini-secret',
+        agenticOsUrl: 'http://agentic-os.internal:8787',
+        agenticOsToken: 'agentic-secret',
+      },
+    },
+    async (baseUrl) => {
+      const {token} = await connectMobile(baseUrl);
+      const response = await fetch(`${baseUrl}/v1/gemini/chat`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gemini-2.5-flash',
+          systemPrompt: 'Be helpful',
+          messages: [
+            {
+              role: 'user',
+              content: 'Мила, сколько сейчас готовых изделий на складе?',
+            },
+          ],
+        }),
+      });
+      assert.equal(response.status, 200);
+      assert.equal((await response.json()).text, 'На складе готовых изделий 535 штук.');
+    },
+  );
+
+  assert.ok(calls.some((call) => call.url === 'http://agentic-os.internal:8787/api/erp'));
+  const systemText = geminiBody.systemInstruction.parts[0].text;
+  assert.match(systemText, /MOBILE MILA ERP FACTS/);
+  assert.match(systemText, /535 pcs/);
+  assert.match(systemText, /PJ1118-2922/);
+  assert.match(systemText, /warehouse-stock/);
+  assert.match(systemText, /Never use production output/);
+});
+
 test('mobile session synchronizes tasks through the private Agentic OS proxy', async () => {
   const calls = [];
   let memoryContent = '';

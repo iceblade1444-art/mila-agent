@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:collection';
+import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 import 'package:livekit_client/livekit_client.dart' as lk;
 import 'package:record/record.dart';
 
@@ -199,9 +201,14 @@ class VoiceController extends StateNotifier<VoiceState> {
 
       final credentials = await _liveCredentials();
 
-      final systemPrompt = _ref
+      final basePrompt = _ref
           .read(llmServiceProvider)
           .buildSystemPrompt(forVoice: true);
+      final erpPrompt = await _mobileErpVoiceContext();
+      final systemPrompt = [
+        basePrompt,
+        erpPrompt,
+      ].where((part) => part.trim().isNotEmpty).join('\n\n');
 
       await _openPlayer();
       _sessionResumptionHandle = '';
@@ -554,6 +561,51 @@ class VoiceController extends StateNotifier<VoiceState> {
       );
     }
     return (apiKey: apiKey, accessToken: accessToken);
+  }
+
+  Future<String> _mobileErpVoiceContext() async {
+    final secure = _ref.read(secureStoreProvider);
+    final backendUrl = AppConfig.configuredBackendUrl(
+      await secure.read(SecureStore.milaBackendUrl),
+    );
+    final sessionToken =
+        await secure.read(SecureStore.openAiAccountToken) ?? '';
+    if (backendUrl.isEmpty || sessionToken.isEmpty) {
+      return '''
+MOBILE ERP CONTEXT
+Agentic OS is not connected on this device. For Milana ERP questions, say you cannot verify live ERP data right now instead of guessing.''';
+    }
+    final root = backendUrl.endsWith('/')
+        ? backendUrl.substring(0, backendUrl.length - 1)
+        : backendUrl;
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$root/v1/erp/context'),
+            headers: {'Authorization': 'Bearer $sessionToken'},
+          )
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode != 200) {
+        return '''
+MOBILE ERP CONTEXT
+Live ERP context could not be loaded from MILA server (${response.statusCode}). For ERP questions, say you cannot verify the data right now instead of guessing.''';
+      }
+      final json = jsonDecode(response.body);
+      if (json is! Map<String, dynamic>) return '';
+      final instruction = (json['instruction'] as String? ?? '').trim();
+      final context = instruction.isNotEmpty
+          ? instruction
+          : const JsonEncoder.withIndent('  ').convert(json);
+      return '''
+MOBILE ERP CONTEXT
+Use this authoritative live ERP context for Milana business questions. If a requested fact is missing, say that it is not available right now. Never invent ERP facts.
+Critical rule: готовые изделия / finished goods stock must come only from /warehouse-stock and /warehouse-map through finishedGoods / erp_finished_goods_stock. Do not answer finished-goods questions from production output, material inventory, GM summary, memory, or guesses.
+$context''';
+    } catch (_) {
+      return '''
+MOBILE ERP CONTEXT
+Live ERP context is temporarily unavailable. For ERP questions, say you cannot verify the data right now instead of guessing.''';
+    }
   }
 
   // -------------------------------------------------------------------------

@@ -1041,7 +1041,15 @@ export function createMilaServer(options = {}) {
         }
 
         const body = await readJson(req);
-        sendJson(res, 200, await generateGeminiChat({body, cfg, fetchImpl}));
+        const erpContext = shouldAttachErpContext(body)
+          ? await buildErpVoiceBriefing()
+          : null;
+        sendJson(res, 200, await generateGeminiChat({
+          body,
+          cfg,
+          fetchImpl,
+          erpContext,
+        }));
         return;
       }
 
@@ -1214,7 +1222,36 @@ async function createGeminiLiveToken({cfg, fetchImpl}) {
   };
 }
 
-async function generateGeminiChat({body, cfg, fetchImpl}) {
+function textFromChatBody(body) {
+  const messages = Array.isArray(body?.messages) ? body.messages : [];
+  return messages
+    .slice(-8)
+    .map((message) => String(message?.content || ''))
+    .join('\n')
+    .toLowerCase();
+}
+
+function shouldAttachErpContext(body) {
+  const text = textFromChatBody(body);
+  return /\b(erp|warehouse|stock|inventory|production|order|sewing|packaging|cutting|finance|revenue|factory)\b/.test(text) ||
+    /(склад|остатк|готов(ых|ые|ая|ой)?\s+издел|готов(ая|ой|ую)?\s+продукц|производств|заказ|пошив|упаковк|раскро|закрой|выручк|финанс|модель|товар|ячейк|полк|секци)/i.test(text) ||
+    /(ombor|tayyor|mahsulot|ishlab|buyurtma|tikuv|qadoq|bichuv|moliya|daromad|model)/i.test(text);
+}
+
+function composeMobileErpPrompt(erpContext) {
+  if (!erpContext) return '';
+  const instruction = String(erpContext.instruction || '').trim();
+  const fallback = JSON.stringify(erpContext, null, 2);
+  return [
+    'MOBILE MILA ERP FACTS.',
+    'For Milana ERP questions, answer only from the live ERP context below. If the exact fact is absent, say that you cannot verify it right now. Do not invent numbers, model names, orders, warehouse cells, dates, or prices.',
+    'Critical warehouse rule: готовые изделия / finished goods stock must come only from /warehouse-stock and /warehouse-map, exposed as finishedGoods / erp_finished_goods_stock. Never use production output, material inventory, GM summary, or memory as the answer for finished goods.',
+    'If the user asks "сколько готовых изделий на складе", answer the finishedGoods.pieces value and, if available, mention packages/models and top model rows.',
+    instruction || fallback,
+  ].join('\n').slice(0, 12000);
+}
+
+async function generateGeminiChat({body, cfg, fetchImpl, erpContext = null}) {
   const model = String(body.model || 'gemini-2.5-flash').trim();
   if (!/^[a-zA-Z0-9._-]{1,100}$/.test(model)) {
     const error = new Error('Invalid Gemini model');
@@ -1245,6 +1282,11 @@ async function generateGeminiChat({body, cfg, fetchImpl}) {
     throw error;
   }
 
+  const systemPrompt = [
+    String(body.systemPrompt || '').trim(),
+    composeMobileErpPrompt(erpContext),
+  ].filter(Boolean).join('\n\n');
+
   const upstream = await fetchImpl(
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
     {
@@ -1254,7 +1296,7 @@ async function generateGeminiChat({body, cfg, fetchImpl}) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        ...(body.systemPrompt ? {systemInstruction: {parts: [{text: String(body.systemPrompt).slice(0, 30000)}]}} : {}),
+        ...(systemPrompt ? {systemInstruction: {parts: [{text: systemPrompt.slice(0, 30000)}]}} : {}),
         ...(body.groundWithGoogleSearch === false ? {} : {tools: [{googleSearch: {}}]}),
         contents,
       }),
