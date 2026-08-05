@@ -533,7 +533,7 @@ class AppSettings {
     this.deliveryStyle = MilaDeliveryStyle.natural,
     this.listeningProfile = MilaListeningProfile.balanced,
     this.responseLength = MilaResponseLength.brief,
-    this.voiceTransport = MilaVoiceTransport.direct,
+    this.voiceTransport = MilaVoiceTransport.livekit,
     this.voiceDirection = '',
     this.affectiveDialog = true,
     this.proactiveAudio = true,
@@ -624,7 +624,7 @@ class AppSettings {
   );
 
   Map<String, dynamic> toJson() => {
-    'v': 12,
+    'v': 13,
     'onboarded': onboarded,
     'permissionsDone': permissionsDone,
     'provider': provider.name,
@@ -742,11 +742,13 @@ class AppSettings {
         json['responseLength'],
         MilaResponseLength.brief,
       ),
-      voiceTransport: _enumByName(
-        MilaVoiceTransport.values,
-        json['voiceTransport'],
-        MilaVoiceTransport.direct,
-      ),
+      voiceTransport: version < 13
+          ? MilaVoiceTransport.livekit
+          : _enumByName(
+              MilaVoiceTransport.values,
+              json['voiceTransport'],
+              MilaVoiceTransport.livekit,
+            ),
       voiceDirection: (json['voiceDirection'] as String? ?? '')
           .replaceAll(RegExp(r'\s+'), ' ')
           .trim(),
