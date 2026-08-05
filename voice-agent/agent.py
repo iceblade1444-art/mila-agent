@@ -46,6 +46,13 @@ Agentic OS:
   written into Obsidian, routed to agents, or continued after the voice call.
 - Use the available tools for current system status, Hermes, Kanban, Obsidian,
   and Claude Workspace instead of inventing results.
+- For ERP and business-control questions, use the live ERP context or the
+  get_erp_business_snapshot tool. Finished-goods warehouse questions
+  ("склад готовых изделий", "готовые изделия на складе", "finished goods") must
+  come from the ERP finished goods warehouse source only: /warehouse-stock and
+  /warehouse-map, exposed through Agentic OS /api/erp. Do not answer those from
+  production output, material inventory, GM summary, or memory. If ERP data is
+  unavailable, say that you cannot verify it right now instead of inventing.
 - For fresh public facts, news, prices, trends or competitor research, answer
   from connected search/tool results when available. If this voice session has
   no live search result, offer to route a short research task through
@@ -230,6 +237,7 @@ def build_profile_instructions(source: dict) -> str:
 
 WORKSPACE_CONTEXT_LIMIT = 9000
 VOICE_INSTRUCTION_LIMIT = 30000
+ERP_CONTEXT_LIMIT = 12000
 
 
 def fetch_voice_instruction(profile: dict, language: str, timeout: float = 8.0) -> str:
@@ -311,6 +319,59 @@ def fetch_workspace_context(timeout: float = 8.0) -> str:
     return context.strip()[:WORKSPACE_CONTEXT_LIMIT]
 
 
+def compact_json(value: object, limit: int = ERP_CONTEXT_LIMIT) -> str:
+    try:
+        text = json.dumps(value, ensure_ascii=False, indent=2)
+    except (TypeError, ValueError):
+        text = str(value)
+    return text[:limit]
+
+
+def compose_erp_instructions(erp: object) -> str:
+    if not isinstance(erp, dict):
+        return ""
+    instruction = str(erp.get("instruction") or "").strip()
+    if instruction:
+        body = instruction
+    else:
+        body = compact_json(erp, ERP_CONTEXT_LIMIT - 1200)
+    return (
+        "Authoritative live ERP context for this room. Use it before answering "
+        "questions about Milana ERP, production, sewing flows, warehouse, "
+        "finished goods, stock, tasks, revenue, and order ETA. If you need fresher "
+        "data, call get_erp_business_snapshot. Critical rule: готовые изделия / "
+        "finished goods warehouse is a separate source from production output and "
+        "material inventory. Never invent missing ERP facts.\n"
+        f"{body}"
+    )[:ERP_CONTEXT_LIMIT]
+
+
+def fetch_erp_snapshot_text(timeout: float = 12.0) -> str:
+    base_url = os.getenv("AGENTIC_OS_URL", "").rstrip("/")
+    token = os.getenv("AGENTIC_OS_TOKEN", "")
+    if not base_url or not token:
+        return json.dumps(
+            {"ok": False, "error": "Agentic OS ERP access is not configured"},
+            ensure_ascii=False,
+        )
+    http_request = urllib.request.Request(
+        f"{base_url}/api/erp",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    try:
+        with urllib.request.urlopen(http_request, timeout=timeout) as response:
+            payload = json.loads(response.read(1048576).decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        detail = error.read(8192).decode("utf-8", "replace")
+        try:
+            payload = {"ok": False, "status": error.code, **json.loads(detail)}
+        except json.JSONDecodeError:
+            payload = {"ok": False, "status": error.code, "error": detail}
+    except (OSError, TimeoutError, ValueError) as error:
+        payload = {"ok": False, "error": f"ERP snapshot unavailable: {error}"}
+    return compact_json(payload, 65536)
+
+
 def compose_session_instructions(profile: dict, served_instruction: str = "") -> str:
     """Agentic OS's prompt when it answered, the local builder when it did not.
 
@@ -379,6 +440,24 @@ class MilaConversationAgent(Agent):
 
 
 class MilaAgent(MilaConversationAgent):
+    @function_tool
+    async def get_erp_business_snapshot(self, focus: str = "") -> str:
+        """Read live Milana ERP facts: finished goods warehouse, production, flows, stock, finance, tasks, and ETA."""
+        result = await asyncio.to_thread(fetch_erp_snapshot_text)
+        return json.dumps(
+            {
+                "ok": True,
+                "focus": focus,
+                "rule": (
+                    "Use erp_finished_goods_stock for finished goods warehouse. "
+                    "Use erp_active_production or erp_business_control for processes, "
+                    "sewing flow, production stages and ETA. Do not invent facts."
+                ),
+                "snapshot_json": result,
+            },
+            ensure_ascii=False,
+        )[:65536]
+
     @function_tool
     async def get_system_status(self) -> str:
         """Read current Hermes, Kanban, Obsidian, and Claude status."""
@@ -499,11 +578,21 @@ server = AgentServer()
 async def mila_session(ctx: JobContext):
     language = "auto"
     raw_profile = {}
+    raw_erp_context = {}
     try:
-        metadata_source = ctx.job.metadata or getattr(ctx.room, "metadata", "") or "{}"
-        metadata = json.loads(metadata_source)
+        metadata = {}
+        for metadata_source in (
+            getattr(ctx.job, "metadata", "") or "",
+            getattr(getattr(ctx, "room", None), "metadata", "") or "",
+        ):
+            if not metadata_source:
+                continue
+            parsed = json.loads(metadata_source)
+            if isinstance(parsed, dict):
+                metadata.update(parsed)
         language = str(metadata.get("language") or "auto")
         raw_profile = metadata.get("profile") or {}
+        raw_erp_context = metadata.get("erp") or {}
     except (TypeError, ValueError):
         pass
     profile = normalize_live_profile(raw_profile)
@@ -526,6 +615,20 @@ async def mila_session(ctx: JobContext):
                 "contradict them:\n"
                 f"{workspace_context}"
             )
+    erp_instructions = compose_erp_instructions(raw_erp_context)
+    if erp_instructions:
+        session_instructions = f"{session_instructions}\n\n{erp_instructions}"
+    else:
+        erp_snapshot = await asyncio.to_thread(fetch_erp_snapshot_text)
+        session_instructions = (
+            f"{session_instructions}\n\n"
+            "Fallback live ERP snapshot from Agentic OS /api/erp. Use it only for "
+            "ERP facts that are present in the snapshot; if a fact is missing or "
+            "the snapshot says ok=false, say you cannot verify it right now. "
+            "Finished goods warehouse must come from erp_finished_goods_stock, not "
+            "production output or material inventory:\n"
+            f"{erp_snapshot[:ERP_CONTEXT_LIMIT]}"
+        )
 
     model = (
         os.getenv("MILA_LIVE_MODEL")

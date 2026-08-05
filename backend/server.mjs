@@ -299,6 +299,160 @@ export function createMilaServer(options = {}) {
     return data;
   }
 
+  function erpNumber(value, fallback = 0) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : fallback;
+  }
+
+  function erpText(value, max = 160) {
+    return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
+  }
+
+  function summarizeFinishedGoodsRows(finishedGoods) {
+    const rows = Array.isArray(finishedGoods?.top_models)
+      ? finishedGoods.top_models
+      : Array.isArray(finishedGoods?.items)
+        ? finishedGoods.items
+        : [];
+    return rows.slice(0, 8).map((row) => ({
+      model: erpText(row.model_code || row.sku || row.model || row.name),
+      name: erpText(row.model_name || row.name || row.title),
+      order: erpText(row.order_no || row.production_no || row.order),
+      pieces: erpNumber(row.total_pieces ?? row.available_pieces ?? row.pieces ?? row.quantity),
+      packages: erpNumber(row.total_packages ?? row.packages),
+      section: erpText(row.section),
+      cell: erpText(row.cell),
+      shelf: erpText(row.shelf),
+      color: erpText(row.color),
+    }));
+  }
+
+  function summarizeErpSnapshot(snapshot) {
+    const cards = snapshot?.cards || {};
+    const gm = cards.erp_gm_summary || {};
+    const activeProduction = cards.erp_active_production || {};
+    const business = cards.erp_business_control || {};
+    const inventory = cards.erp_inventory_status || {};
+    const finance = cards.erp_finance_summary || {};
+    const finishedGoods = cards.erp_finished_goods_stock || {};
+    const busiestFlow =
+      business?.answer_hints?.busiest_sewing_flow ||
+      (Array.isArray(business?.busiest_sewing_flows) ? business.busiest_sewing_flows[0] : null) ||
+      {};
+    const nextWarehouse =
+      business?.answer_hints?.next_warehouse_order ||
+      (Array.isArray(business?.warehouse_eta) ? business.warehouse_eta[0] : null) ||
+      {};
+
+    return {
+      ok: Boolean(snapshot?.ok),
+      source: 'Agentic OS /api/erp',
+      baseUrl: erpText(snapshot?.baseUrl || cfg.agenticOsUrl, 240),
+      fetchedAt: new Date().toISOString(),
+      errors: snapshot?.errors || {},
+      finishedGoods: {
+        source: '/warehouse-stock + /warehouse-map',
+        apiSource: '/api/packages/storage-map',
+        pieces: erpNumber(
+          finishedGoods.total_pieces ??
+            finishedGoods.available_pieces ??
+            finishedGoods.pieces ??
+            finishedGoods.quantity,
+        ),
+        packages: erpNumber(finishedGoods.total_packages ?? finishedGoods.packages),
+        models: erpNumber(finishedGoods.total_models ?? finishedGoods.models),
+        sections: Array.isArray(finishedGoods.sections)
+          ? finishedGoods.sections.slice(0, 12).map((item) => erpText(item, 60))
+          : [],
+        topModels: summarizeFinishedGoodsRows(finishedGoods),
+      },
+      production: {
+        activeOrders: erpNumber(
+          business.total_orders ?? activeProduction.active_work_orders ?? gm.active_orders,
+        ),
+        trackedOrders: erpNumber(business.total_orders),
+        productionOutput: erpNumber(
+          activeProduction.cutting_output ??
+            gm.production_output ??
+            business.production_output,
+        ),
+        cuttingOutput: erpNumber(activeProduction.cutting_output),
+        sewingOutput: erpNumber(activeProduction.sewing_output),
+        packagingOutput: erpNumber(activeProduction.packaging_output),
+        reworkQty: erpNumber(activeProduction.rework_qty),
+        busiestFlow: {
+          flow: erpText(busiestFlow.flow || busiestFlow.name || busiestFlow.department),
+          orders: erpNumber(busiestFlow.orders),
+          plannedQuantity: erpNumber(busiestFlow.planned_quantity ?? busiestFlow.quantity),
+        },
+        nextWarehouseOrder: {
+          productionNo: erpText(nextWarehouse.production_no),
+          orderNo: erpText(nextWarehouse.order_no),
+          model: erpText(nextWarehouse.model_code || nextWarehouse.model),
+          warehouseEta: erpText(nextWarehouse.warehouse_eta || nextWarehouse.due_date),
+          status: erpText(nextWarehouse.warehouse_status || nextWarehouse.status),
+          quantity: erpNumber(nextWarehouse.planned_quantity ?? nextWarehouse.quantity),
+        },
+      },
+      inventory: {
+        materialItems: erpNumber(inventory.total_items ?? inventory.items?.length),
+      },
+      finance: {
+        revenue: erpNumber(finance.revenue_total ?? gm.revenue),
+        payments: erpNumber(finance.payments_received),
+        stockValue: erpNumber(finance.branded_stock_value ?? gm.branded_stock_value),
+      },
+      tools: Array.isArray(snapshot?.server?.tools) ? snapshot.server.tools.length : 0,
+    };
+  }
+
+  function formatErpVoiceInstruction(summary) {
+    const fg = summary.finishedGoods || {};
+    const production = summary.production || {};
+    const models = (fg.topModels || [])
+      .map((row) => {
+        const location = [row.section, row.cell, row.shelf].filter(Boolean).join('/');
+        return `${row.model || row.name || 'unknown'}: ${row.pieces} pcs${row.name ? `, ${row.name}` : ''}${row.order ? `, order ${row.order}` : ''}${location ? `, ${location}` : ''}`;
+      })
+      .join('; ');
+    return [
+      'AUTHORITATIVE LIVE ERP CONTEXT.',
+      'Use this for Milana ERP business questions before answering. If the user asks for ERP facts and this context is stale or unavailable, call the ERP tool instead of guessing.',
+      `Finished goods warehouse source: ${fg.source}. This is the only source for готовые изделия / finished goods stock.`,
+      `Finished goods now: ${fg.pieces} pcs, ${fg.packages} packages, ${fg.models} models.`,
+      models ? `Finished goods rows: ${models}.` : 'Finished goods rows: no model rows returned.',
+      `Production/process source is separate: active orders ${production.activeOrders}, tracked orders ${production.trackedOrders}, cutting ${production.cuttingOutput}, sewing ${production.sewingOutput}, packaging ${production.packagingOutput}, rework ${production.reworkQty}.`,
+      production.busiestFlow?.flow
+        ? `Busiest sewing flow: ${production.busiestFlow.flow}, ${production.busiestFlow.plannedQuantity} pcs.`
+        : 'Busiest sewing flow: not returned.',
+      production.nextWarehouseOrder?.productionNo
+        ? `Next warehouse order: ${production.nextWarehouseOrder.productionNo}, model ${production.nextWarehouseOrder.model}, ETA ${production.nextWarehouseOrder.warehouseEta}.`
+        : 'Next warehouse order: not returned.',
+      'Never mix material inventory, production output, and finished goods warehouse. Never invent model names, quantities, sections, cells, dates, or prices.',
+    ].join('\n').slice(0, 7000);
+  }
+
+  async function buildErpVoiceBriefing() {
+    if (!cfg.agenticOsUrl || !cfg.agenticOsToken) return null;
+    try {
+      const snapshot = await agenticRequest('/api/erp');
+      const summary = summarizeErpSnapshot(snapshot);
+      return {
+        ...summary,
+        instruction: formatErpVoiceInstruction(summary),
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        source: 'Agentic OS /api/erp',
+        fetchedAt: new Date().toISOString(),
+        error: error.message || 'ERP context unavailable',
+        instruction:
+          'ERP live context is unavailable for this voice room. For ERP questions, say that live ERP data could not be verified instead of guessing.',
+      };
+    }
+  }
+
   async function agenticAccount(req) {
     if (!cfg.agenticOsUrl) {
       const error = new Error('Agentic OS is not configured');
@@ -646,6 +800,16 @@ export function createMilaServer(options = {}) {
         return;
       }
 
+      if (req.method === 'GET' && url.pathname === '/v1/erp/context') {
+        const session = requireSession(req, res);
+        if (!session) return;
+        sendJson(res, 200, (await buildErpVoiceBriefing()) || {
+          ok: false,
+          error: 'Agentic OS ERP context is not configured',
+        });
+        return;
+      }
+
       if (req.method === 'POST' && url.pathname === '/v1/tools/mcp/call') {
         const session = requireSession(req, res);
         if (!session) return;
@@ -938,6 +1102,7 @@ export function createMilaServer(options = {}) {
         const body = await readJson(req);
         const language = normalizeLanguage(body.language);
         const profile = normalizeLiveProfile(body.profile);
+        const erp = await buildErpVoiceBriefing();
         const owner = ownerFromJson(session.ownerJson);
         const room = `mila-${crypto.randomUUID()}`;
         const identityBase = owner?.id || owner?.email || session.label;
@@ -952,6 +1117,7 @@ export function createMilaServer(options = {}) {
             metadata: JSON.stringify({
               owner: normalizeOwner(owner),
               language,
+              erpReady: Boolean(erp?.ok),
               source: 'mila-mobile',
             }),
           },
@@ -967,6 +1133,7 @@ export function createMilaServer(options = {}) {
           metadata: JSON.stringify({
             language,
             profile,
+            ...(erp ? {erp} : {}),
             source: 'agentic-os',
           }),
         });
