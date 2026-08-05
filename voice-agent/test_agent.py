@@ -253,6 +253,33 @@ class ErpInstructionTest(unittest.TestCase):
         self.assertIn("Do not replace this with production output", text)
         self.assertIn("Finished goods now: 535 pcs", text)
 
+    def test_fallback_snapshot_gets_a_finished_goods_headline(self):
+        text = agent.compose_fallback_erp_snapshot_text(json.dumps({
+            "ok": True,
+            "cards": {
+                "erp_finished_goods_stock": {
+                    "total_pieces": 535,
+                    "total_packages": 9,
+                    "total_models": 1,
+                    "items": [
+                        {
+                            "model_code": "PJ1118-2922",
+                            "name": "Фут-штаны",
+                            "order_no": "SO-2026-000017",
+                            "total_pieces": 535,
+                        }
+                    ],
+                },
+                "erp_active_production": {
+                    "cutting_output": 18350,
+                },
+            },
+        }, ensure_ascii=False))
+        self.assertTrue(text.startswith("Finished goods warehouse quick facts"))
+        self.assertIn("535 pcs", text)
+        self.assertIn("PJ1118-2922", text)
+        self.assertIn("Raw Agentic OS /api/erp snapshot", text)
+
 
 if __name__ == "__main__":
     unittest.main()

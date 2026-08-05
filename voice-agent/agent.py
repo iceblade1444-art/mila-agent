@@ -461,6 +461,24 @@ def fetch_erp_snapshot_text(timeout: float = 12.0) -> str:
     return compact_json(payload, 65536)
 
 
+def compose_fallback_erp_snapshot_text(snapshot_text: str) -> str:
+    snapshot_text = str(snapshot_text or "").strip()
+    if not snapshot_text:
+        return ""
+    try:
+        payload = json.loads(snapshot_text)
+    except (TypeError, ValueError):
+        payload = None
+    finished_goods_summary = (
+        summarize_finished_goods_for_prompt(payload)
+        if isinstance(payload, dict)
+        else ""
+    )
+    if finished_goods_summary:
+        return f"{finished_goods_summary}\n\nRaw Agentic OS /api/erp snapshot:\n{snapshot_text}"
+    return snapshot_text
+
+
 def compose_session_instructions(profile: dict, served_instruction: str = "") -> str:
     """Agentic OS's prompt when it answered, the local builder when it did not.
 
@@ -709,6 +727,7 @@ async def mila_session(ctx: JobContext):
         session_instructions = f"{session_instructions}\n\n{erp_instructions}"
     else:
         erp_snapshot = await asyncio.to_thread(fetch_erp_snapshot_text)
+        erp_snapshot_block = compose_fallback_erp_snapshot_text(erp_snapshot)
         session_instructions = (
             f"{session_instructions}\n\n"
             "Fallback live ERP snapshot from Agentic OS /api/erp. Use it only for "
@@ -716,7 +735,7 @@ async def mila_session(ctx: JobContext):
             "the snapshot says ok=false, say you cannot verify it right now. "
             "Finished goods warehouse must come from erp_finished_goods_stock, not "
             "production output or material inventory:\n"
-            f"{erp_snapshot[:ERP_CONTEXT_LIMIT]}"
+            f"{erp_snapshot_block[:ERP_CONTEXT_LIMIT]}"
         )
 
     model = (
