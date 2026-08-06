@@ -49,10 +49,11 @@ Agentic OS:
 - For ERP and business-control questions, use the live ERP context or the
   get_erp_business_snapshot tool. Finished-goods warehouse questions
   ("склад готовых изделий", "готовые изделия на складе", "finished goods") must
-  come from the ERP finished goods warehouse source only: /warehouse-stock and
-  /warehouse-map, exposed through Agentic OS /api/erp. Do not answer those from
-  production output, material inventory, GM summary, or memory. If ERP data is
-  unavailable, say that you cannot verify it right now instead of inventing.
+  call get_finished_goods_warehouse and must come from the ERP finished goods
+  warehouse source only: /warehouse-stock and /warehouse-map, exposed through
+  Agentic OS /api/erp. Do not answer those from production output, material
+  inventory, GM summary, or memory. If ERP data is unavailable, say that you
+  cannot verify it right now instead of inventing.
 - For fresh public facts, news, prices, trends or competitor research, answer
   from connected search/tool results when available. If this voice session has
   no live search result, offer to route a short research task through
@@ -410,6 +411,78 @@ def summarize_finished_goods_for_prompt(erp: dict) -> str:
     )
 
 
+def finished_goods_payload(erp: object) -> dict:
+    if not isinstance(erp, dict):
+        return {"ok": False, "error": "ERP snapshot is not a JSON object"}
+    if erp.get("ok") is False:
+        return {
+            "ok": False,
+            "source": "/warehouse-stock + /warehouse-map",
+            "error": erp.get("error") or "ERP snapshot says ok=false",
+        }
+    fg = erp.get("finishedGoods") if isinstance(erp.get("finishedGoods"), dict) else {}
+    if not fg:
+        cards = erp.get("cards") if isinstance(erp.get("cards"), dict) else {}
+        fg = cards.get("erp_finished_goods_stock") if isinstance(cards.get("erp_finished_goods_stock"), dict) else {}
+    if not fg:
+        return {
+            "ok": False,
+            "source": "/warehouse-stock + /warehouse-map",
+            "error": "Finished goods warehouse data is absent from ERP snapshot",
+        }
+    rows = fg.get("topModels") or fg.get("top_models") or fg.get("items") or []
+    top_models = []
+    if isinstance(rows, list):
+        for row in rows[:8]:
+            if not isinstance(row, dict):
+                continue
+            top_models.append(
+                {
+                    "model": _as_text(row.get("model") or row.get("model_code") or row.get("sku") or row.get("name")),
+                    "name": _as_text(row.get("name") or row.get("model_name") or row.get("title")),
+                    "order": _as_text(row.get("order") or row.get("order_no") or row.get("production_no")),
+                    "pieces": _as_number(
+                        row.get("pieces")
+                        or row.get("total_pieces")
+                        or row.get("available_pieces")
+                        or row.get("quantity")
+                    ),
+                    "packages": _as_number(row.get("packages") or row.get("total_packages")),
+                    "section": _as_text(row.get("section"), 40),
+                    "cell": _as_text(row.get("cell"), 40),
+                    "shelf": _as_text(row.get("shelf"), 40),
+                    "color": _as_text(row.get("color"), 60),
+                }
+            )
+    pieces = _as_number(
+        fg.get("pieces")
+        or fg.get("total_pieces")
+        or fg.get("available_pieces")
+        or fg.get("quantity")
+    )
+    packages = _as_number(fg.get("packages") or fg.get("total_packages"))
+    models = _as_number(fg.get("models") or fg.get("total_models"))
+    answer_bits = [f"На складе готовых изделий сейчас {pieces} шт."]
+    if packages:
+        answer_bits.append(f"{packages} упаковок")
+    if models:
+        answer_bits.append(f"{models} модель")
+    if top_models:
+        top = top_models[0]
+        detail = top["model"] or top["name"]
+        if detail:
+            answer_bits.append(f"основная позиция: {detail}, {top['pieces']} шт.")
+    return {
+        "ok": True,
+        "source": "/warehouse-stock + /warehouse-map",
+        "pieces": pieces,
+        "packages": packages,
+        "models": models,
+        "top_models": top_models,
+        "answer_ru": "; ".join(answer_bits) + ".",
+    }
+
+
 def compose_erp_instructions(erp: object) -> str:
     if not isinstance(erp, dict):
         return ""
@@ -553,6 +626,18 @@ class MilaConversationAgent(Agent):
 
 
 class MilaAgent(MilaConversationAgent):
+    @function_tool
+    async def get_finished_goods_warehouse(self) -> str:
+        """Return the exact current finished-goods warehouse count from /warehouse-stock and /warehouse-map."""
+        snapshot = await asyncio.to_thread(fetch_erp_snapshot_payload)
+        result = finished_goods_payload(snapshot)
+        result["rule"] = (
+            "This is the only valid source for questions about готовые изделия "
+            "на складе / finished goods warehouse. Speak answer_ru when ok=true. "
+            "Never replace it with production output, material inventory, or memory."
+        )
+        return json.dumps(result, ensure_ascii=False)[:65536]
+
     @function_tool
     async def get_erp_business_snapshot(self, focus: str = "") -> str:
         """Read live Milana ERP facts: finished goods warehouse, production, flows, stock, finance, tasks, and ETA."""

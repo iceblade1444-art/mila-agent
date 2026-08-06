@@ -280,6 +280,44 @@ class ErpInstructionTest(unittest.TestCase):
         self.assertIn("PJ1118-2922", text)
         self.assertIn("Raw Agentic OS /api/erp snapshot", text)
 
+    def test_finished_goods_payload_returns_a_direct_answer(self):
+        payload = agent.finished_goods_payload({
+            "ok": True,
+            "cards": {
+                "erp_finished_goods_stock": {
+                    "total_pieces": 535,
+                    "total_packages": 9,
+                    "total_models": 1,
+                    "items": [
+                        {
+                            "model_code": "PJ1118-2922",
+                            "name": "Фут-штаны",
+                            "order_no": "SO-2026-000017",
+                            "total_pieces": 535,
+                            "section": "N",
+                            "cell": "N-01",
+                            "shelf": "S1",
+                        }
+                    ],
+                },
+                "erp_active_production": {
+                    "cutting_output": 18350,
+                    "sewing_output": 535,
+                },
+            },
+        })
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["pieces"], 535)
+        self.assertEqual(payload["source"], "/warehouse-stock + /warehouse-map")
+        self.assertIn("535 шт", payload["answer_ru"])
+        self.assertIn("PJ1118-2922", payload["answer_ru"])
+        self.assertNotIn("18350", payload["answer_ru"])
+
+    def test_finished_goods_payload_reports_missing_data_without_guessing(self):
+        payload = agent.finished_goods_payload({"ok": True, "cards": {}})
+        self.assertFalse(payload["ok"])
+        self.assertIn("absent", payload["error"])
+
 
 if __name__ == "__main__":
     unittest.main()
