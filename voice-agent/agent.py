@@ -241,6 +241,23 @@ VOICE_INSTRUCTION_LIMIT = 30000
 ERP_CONTEXT_LIMIT = 12000
 
 
+# Agentic OS action names matching the @function_tool methods on MilaAgent.
+# get_finished_goods_warehouse and get_erp_business_snapshot are this agent's
+# local names for the two ERP reads; the server knows them by these names.
+SERVED_PROMPT_TOOLS = [
+    "get_finished_goods_stock",
+    "get_erp_business_context",
+    "get_system_status",
+    "list_kanban_tasks",
+    "create_kanban_task",
+    "delegate_to_hermes",
+    "search_obsidian_notes",
+    "read_obsidian_note",
+    "write_obsidian_note",
+    "ask_claude_code",
+]
+
+
 def fetch_voice_instruction(profile: dict, language: str, timeout: float = 8.0) -> str:
     """The prompt Agentic OS composes for its own browser client.
 
@@ -260,6 +277,13 @@ def fetch_voice_instruction(profile: dict, language: str, timeout: float = 8.0) 
         {
             "language": language,
             "mode": "voice",
+            # The prompt is shared with the browser; the tools are not. Agentic OS
+            # grew a personal desk (day plan, reminders, calendar) that this agent
+            # cannot call, so it now describes only what the caller declares. These
+            # are the Agentic OS action names behind the @function_tool methods
+            # below — keep the two in step, or the prompt starts promising work
+            # this agent has no way to do.
+            "tools": SERVED_PROMPT_TOOLS,
             # Sent as preferences, not as prose: Agentic OS validates every field
             # against its own catalogues, so nothing here can inject prompt text.
             "preferences": {

@@ -16,6 +16,7 @@ import '../llm/llm_service.dart';
 import '../storage/stores.dart';
 import 'gemini_live_client.dart';
 import 'gemini_live_token_service.dart';
+import 'mila_live_tools.dart';
 import 'mila_livekit_token_source.dart';
 import 'pcm_stream_player.dart';
 
@@ -677,7 +678,42 @@ Live ERP context is temporarily unavailable. For ERP questions, say you cannot v
       };
   }
 
+  /// Runs a personal action on Agentic OS and hands the raw result back to the
+  /// model. These all touch the signed-in account's own desk and complete in one
+  /// step, so there is nothing to confirm — the value of doing it by voice is
+  /// that it happens while the user's hands are busy.
+  Future<void> _runPersonalTool(
+    String id,
+    String name,
+    Map<String, dynamic> args,
+  ) async {
+    try {
+      final result = await _ref
+          .read(agenticOsServiceProvider)
+          .runMilaAction(name, args);
+      _client?.sendToolResponse(id: id, name: name, response: result);
+    } catch (error) {
+      // The model has to know it failed, or it will report the reminder as set.
+      _client?.sendToolResponse(
+        id: id,
+        name: name,
+        response: {
+          'ok': false,
+          'error': error is AgenticOsException
+              ? error.message
+              : 'Agentic OS is unreachable',
+          'rule':
+              'This did not happen. Say so plainly instead of confirming it.',
+        },
+      );
+    }
+  }
+
   void _onToolCall(String id, String name, Map<String, dynamic> args) {
+    if (milaPersonalToolNames.contains(name)) {
+      unawaited(_runPersonalTool(id, name, args));
+      return;
+    }
     if (name != 'delegate_to_hermes') {
       _client?.sendToolResponse(
         id: id,

@@ -4,6 +4,8 @@ import 'dart:typed_data';
 
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import 'mila_live_tools.dart';
+
 /// Low-level client for the Gemini Live API
 /// (BidiGenerateContent over WebSocket).
 ///
@@ -119,30 +121,7 @@ class GeminiLiveClient {
             'handle': sessionResumptionHandle,
         },
         'tools': [
-          {
-            'functionDeclarations': [
-              {
-                'name': 'delegate_to_hermes',
-                'description':
-                    'Propose a concrete task for Hermes Agentic OS. The user must approve it in the MILA chat before execution.',
-                'parameters': {
-                  'type': 'OBJECT',
-                  'properties': {
-                    'title': {
-                      'type': 'STRING',
-                      'description': 'Short task title',
-                    },
-                    'details': {
-                      'type': 'STRING',
-                      'description':
-                          'Context, constraints and definition of done',
-                    },
-                  },
-                  'required': ['title'],
-                },
-              },
-            ],
-          },
+          {'functionDeclarations': milaLiveFunctionDeclarations},
         ],
       },
     });

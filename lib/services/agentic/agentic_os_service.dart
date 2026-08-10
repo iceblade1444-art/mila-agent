@@ -227,6 +227,25 @@ class AgenticOsService {
     await _request('DELETE', '/api/member/chat', client: client);
   }
 
+  /// Runs one MILA action on Agentic OS and returns its raw result.
+  ///
+  /// The server scopes every personal action to the signed-in account, so this
+  /// only ever reaches the caller's own tasks, notes, reminders and calendar.
+  /// An action the account may not run raises instead of returning an empty
+  /// result, so the assistant can say plainly that it did not happen.
+  Future<Map<String, dynamic>> runMilaAction(
+    String name,
+    Map<String, dynamic> args, {
+    http.Client? client,
+  }) async {
+    return _request(
+      'POST',
+      '/api/mila/actions',
+      body: {'name': name, 'args': args},
+      client: client,
+    );
+  }
+
   Future<List<AgenticInboxItem>> unreadInbox({http.Client? client}) async {
     final json = await _request(
       'GET',

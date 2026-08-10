@@ -141,6 +141,41 @@ class ServedInstructionTest(unittest.TestCase):
         self.assertEqual(captured["body"]["preferences"]["persona"], "Тебя зовут Мила.")
         self.assertNotIn("junk", captured["body"]["preferences"], "only known fields travel")
 
+    def test_declared_tools_travel_so_the_prompt_matches_this_agent(self):
+        captured = {}
+
+        def urlopen(request, timeout=None):
+            captured["body"] = json.loads(request.data.decode())
+            return self._response({"instruction": "SERVED PROMPT"})
+
+        with unittest.mock.patch("urllib.request.urlopen", side_effect=urlopen):
+            agent.fetch_voice_instruction({}, "ru-RU")
+        self.assertEqual(captured["body"]["tools"], agent.SERVED_PROMPT_TOOLS)
+        # Agentic OS grew tools this agent cannot call; asking for them would make
+        # the served prompt promise work that never happens.
+        for absent in ("get_my_day_plan", "remind_me", "create_my_task", "create_calendar_event"):
+            self.assertNotIn(absent, captured["body"]["tools"])
+
+    def test_declared_tools_match_the_methods_actually_registered(self):
+        # The list is hand-maintained because two entries are named differently
+        # here than in Agentic OS, so a drift guard is the only thing keeping it
+        # honest when a tool is added or removed.
+        local_to_served = {
+            "get_finished_goods_warehouse": "get_finished_goods_stock",
+            "get_erp_business_snapshot": "get_erp_business_context",
+        }
+        registered = {
+            local_to_served.get(name, name)
+            for name in dir(agent.MilaAgent)
+            if not name.startswith("_") and callable(getattr(agent.MilaAgent, name, None))
+        }
+        for name in agent.SERVED_PROMPT_TOOLS:
+            self.assertIn(
+                name,
+                registered,
+                f"{name} is declared to Agentic OS but MilaAgent no longer registers it",
+            )
+
     def test_served_prompt_never_replaces_the_tool_and_safety_rules(self):
         composed = agent.compose_session_instructions({}, "SERVED PROMPT")
         self.assertIn(agent.BASE_INSTRUCTIONS, composed)
