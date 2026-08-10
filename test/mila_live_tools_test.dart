@@ -44,14 +44,19 @@ void main() {
     expect(declared, contains('list_my_calendar'), reason: 'reading is fine');
   });
 
+  // Nested literals inside a const map are _ConstMap<dynamic, dynamic>, so they
+  // have to be read as a plain Map rather than cast to Map<String, dynamic>.
+  Map<dynamic, dynamic> mapAt(Map<dynamic, dynamic> owner, String key) =>
+      owner[key] as Map<dynamic, dynamic>;
+
   test('declarations are shaped the way Gemini Live expects', () {
     for (final tool in milaLiveFunctionDeclarations) {
       final name = tool['name'] as String;
       expect(tool['description'], isA<String>(), reason: '$name needs a description');
       expect((tool['description'] as String).length, greaterThan(20));
-      final parameters = tool['parameters'] as Map<String, dynamic>;
+      final parameters = mapAt(tool, 'parameters');
       expect(parameters['type'], 'OBJECT', reason: '$name parameters');
-      final properties = parameters['properties'] as Map<String, dynamic>;
+      final properties = mapAt(parameters, 'properties');
       for (final required in (parameters['required'] as List? ?? const [])) {
         expect(
           properties.keys,
@@ -60,7 +65,7 @@ void main() {
         );
       }
       for (final entry in properties.entries) {
-        final type = (entry.value as Map<String, dynamic>)['type'];
+        final type = (entry.value as Map<dynamic, dynamic>)['type'];
         expect(
           const ['STRING', 'INTEGER', 'BOOLEAN', 'NUMBER'],
           contains(type),
@@ -73,8 +78,7 @@ void main() {
   test('remind_me spells out that the time must be absolute', () {
     final remind = milaLiveFunctionDeclarations
         .firstWhere((tool) => tool['name'] == 'remind_me');
-    final due = ((remind['parameters'] as Map<String, dynamic>)['properties']
-        as Map<String, dynamic>)['dueAt'] as Map<String, dynamic>;
+    final due = mapAt(mapAt(mapAt(remind, 'parameters'), 'properties'), 'dueAt');
     // A relative "in an hour" would be resolved by the server's clock, not the
     // user's, so the declaration has to demand an offset.
     expect(due['description'], contains('ISO 8601'));
