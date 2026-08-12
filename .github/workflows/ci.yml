@@ -29,6 +29,9 @@ jobs:
 
   flutter:
     runs-on: ubuntu-latest
+    # Needed to publish the build to the rolling release below.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -39,13 +42,30 @@ jobs:
       - run: dart format lib test
       - run: flutter test
       - run: flutter build apk --release --dart-define=MILA_BACKEND_URL=https://agent.milanapremium.uz/mila
-      - uses: actions/upload-artifact@v4
-        with:
-          name: mila-android-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
-          if-no-files-found: error
-          # Every push to main builds a 45 MB APK; with the default 90-day
-          # retention they piled up to 2.1 GB and uploads started failing on
-          # the storage quota (2026-08-10). A week is plenty: anything older
-          # is rebuildable from the tag or commit.
-          retention-days: 7
+
+      # The APK used to be an Actions artifact. On a private repo those consume
+      # the paid storage quota: 45 MB per push filled 2.1 GB and every upload
+      # started failing, marking green builds red. Release assets do not count
+      # against that quota, and the download URL stays the same instead of
+      # expiring, so the phone can always be pointed at one link.
+      - name: Publish the APK to the rolling latest release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mv build/app/outputs/flutter-apk/app-release.apk mila-android.apk
+          notes="Automatic build of \`${GITHUB_SHA::7}\` from main, $(date -u '+%Y-%m-%d %H:%M UTC').
+
+          Install \`mila-android.apk\` below. This release is replaced by every
+          push to main, so the link always points at the newest build."
+          if ! gh release view latest >/dev/null 2>&1; then
+            gh release create latest \
+              --title "MILA — latest build" \
+              --notes "$notes" \
+              --prerelease \
+              --target main
+          else
+            gh release edit latest --notes "$notes"
+          fi
+          gh release upload latest mila-android.apk --clobber
