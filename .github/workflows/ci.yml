@@ -44,3 +44,8 @@ jobs:
           name: mila-android-apk
           path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
+          # Every push to main builds a 45 MB APK; with the default 90-day
+          # retention they piled up to 2.1 GB and uploads started failing on
+          # the storage quota (2026-08-10). A week is plenty: anything older
+          # is rebuildable from the tag or commit.
+          retention-days: 7
