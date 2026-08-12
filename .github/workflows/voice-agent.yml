@@ -1,0 +1,24 @@
+name: MILA voice agent
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "voice-agent/**"
+      - ".github/workflows/voice-agent.yml"
+  pull_request:
+    paths:
+      - "voice-agent/**"
+      - ".github/workflows/voice-agent.yml"
+  workflow_dispatch:
+
+jobs:
+  voice-agent:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # The tests stub livekit and google plugins, so no install step is needed.
+      - run: python -m unittest discover -s voice-agent -p "test_*.py" -v

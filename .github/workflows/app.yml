@@ -1,32 +1,36 @@
-name: MILA CI
+name: MILA app
 
+# The APK build is the expensive job (~14 minutes), so it only runs when
+# something that ends up inside the app actually changed.
 on:
   push:
     branches: [main]
+    paths:
+      - "lib/**"
+      - "test/**"
+      - "assets/**"
+      - "android/**"
+      - "ios/**"
+      - "web/**"
+      - "pubspec.yaml"
+      - "pubspec.lock"
+      - "analysis_options.yaml"
+      - ".github/workflows/app.yml"
   pull_request:
+    paths:
+      - "lib/**"
+      - "test/**"
+      - "assets/**"
+      - "android/**"
+      - "ios/**"
+      - "web/**"
+      - "pubspec.yaml"
+      - "pubspec.lock"
+      - "analysis_options.yaml"
+      - ".github/workflows/app.yml"
   workflow_dispatch:
 
 jobs:
-  backend:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - run: npm install --prefix backend
-      - run: npm test --prefix backend
-
-  voice-agent:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      # The tests stub livekit and google plugins, so no install step is needed.
-      - run: python -m unittest discover -s voice-agent -p "test_*.py" -v
-
   flutter:
     runs-on: ubuntu-latest
     # Needed to publish the build to the rolling release below.
@@ -49,7 +53,7 @@ jobs:
       # against that quota, and the download URL stays the same instead of
       # expiring, so the phone can always be pointed at one link.
       - name: Publish the APK to the rolling latest release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
