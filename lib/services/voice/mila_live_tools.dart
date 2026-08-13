@@ -6,9 +6,19 @@
 /// ERP actions are deliberately absent — those touch other people and need the
 /// approval UI the dashboard has.
 ///
-/// Names must match the Agentic OS action names exactly: they are sent both as
-/// Gemini function declarations and, on `/api/mila/voice-instruction`, as the
-/// list that decides which parts of the shared prompt this device is told about.
+/// Names must match the Agentic OS action names exactly: [_onToolCall] forwards
+/// anything in [milaPersonalToolNames] straight to `POST /api/mila/actions`
+/// under that name, so a name that does not exist server-side fails mid-call.
+///
+/// They are *not* sent to `/api/mila/voice-instruction`. This file used to claim
+/// they were, which made it look as though the shared prompt and these
+/// declarations were reconciled somewhere — they are not. On the direct Gemini
+/// Live path the app builds its own instruction locally
+/// ([LlmService.buildSystemPrompt] plus the mobile ERP block) and hands it to
+/// [GeminiLiveClient]; only the LiveKit agent in `voice-agent/agent.py` asks the
+/// server for the shared prompt. So this list agrees with the server's action
+/// names, and with nothing else. Adding a tool here does not tell MILA she has
+/// it — the local prompt has to say so too.
 library;
 
 const List<String> milaPersonalToolNames = [

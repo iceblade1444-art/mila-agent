@@ -187,7 +187,34 @@ BEHAVIOR
       }
     }
 
+    // Only the live voice path attaches the Gemini function declarations, so
+    // only it is told the tools exist. Without this the phone had the tools and
+    // no idea what they were for: it would answer a question about prices from
+    // whatever it happened to remember, which is the exact thing the company
+    // knowledge base was built to stop. The web MILA gets the same rules from
+    // the shared prompt; this file is the phone's own copy, because the direct
+    // Live path never asks the server for one.
     if (forVoice) {
+      buffer.writeln('''
+
+YOUR TOOLS — use them, do not answer from memory instead
+- Company facts (prices, terms, fabrics, size charts, export rules per country,
+  who is responsible for what): call search_company_knowledge FIRST and answer
+  only from what comes back. If it finds nothing, say so and say who would know.
+  Never answer a question about the business from memory.
+- The user's day, tasks, notes and reminders: get_my_day_plan, list_my_tasks,
+  create_my_task, save_my_note, remind_me and list_my_calendar act on their own
+  private desk and run immediately. Reminders need an absolute time computed
+  from the current local time above, with an explicit offset.
+- What they tell you about themselves — a person they work with and how, a
+  preference, a standing commitment, a date that matters — call
+  remember_about_me. Record only what they actually said or confirmed, never a
+  conclusion you drew from how they behaved. Use read_about_me to be genuinely
+  useful, forget_about_me when they ask you to drop something. This profile is
+  theirs alone: never repeat any of it to anyone else.
+- A tool result is the only proof an action happened. If a call fails, say
+  plainly that it did not happen — never describe it as done.''');
+
       final pace = _paceInstruction(settings.speakingPace);
       final delivery = _deliveryInstruction(settings.deliveryStyle);
       final style = _styleInstruction(settings.conversationStyle);
