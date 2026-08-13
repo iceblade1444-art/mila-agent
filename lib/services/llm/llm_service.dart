@@ -545,18 +545,36 @@ structured blocks in your prose.''');
         final agentic = _ref.read(agenticOsServiceProvider);
         if (await agentic.isConnected()) {
           try {
-            final task = await agentic.createTask(
-              title: action.title,
-              body: action.subtitle,
-            );
+            // This card comes from delegate_to_hermes, which the user approved
+            // believing the work goes to Hermes. It used to POST /api/member/tasks
+            // — the private personal desk — and then say "Sent to Hermes", so the
+            // task existed only as a note to themselves while they were told a
+            // fleet had picked it up. Call the action she actually offered.
+            // A write action is staged first and executed only against its
+            // token. Approving this card is the human confirmation the server is
+            // waiting for, so the two calls happen together — but the second one
+            // is what actually sends it, and without it "Sent to Hermes" would
+            // still be a sentence about something that had not happened.
+            final staged = await agentic.runMilaAction('delegate_to_hermes', {
+              'title': action.title,
+              if (action.subtitle.isNotEmpty) 'details': action.subtitle,
+            });
+            if (staged['confirmationToken'] case final String token) {
+              await agentic.runMilaAction('delegate_to_hermes', {
+                'confirmationToken': token,
+              });
+            }
             await _ref
                 .read(agenticTasksProvider.notifier)
                 .refresh(silent: true);
             result = ActionExecutionResult(
               true,
-              'Sent to Hermes: ${task.title}',
+              'Sent to Hermes: ${action.title}',
             );
           } on AgenticOsException catch (error) {
+            // Delegating is operator work, so an employee's phone is refused it.
+            // Saying that is the answer; quietly writing a personal task and
+            // calling it Hermes is how this went wrong in the first place.
             return ActionExecutionResult(false, error.message);
           }
         } else {
