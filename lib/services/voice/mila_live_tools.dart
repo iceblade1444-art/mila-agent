@@ -22,6 +22,16 @@ const List<String> milaPersonalToolNames = [
   'list_my_reminders',
   'cancel_reminder',
   'list_my_calendar',
+  // Company knowledge is read-only from a phone: looking up a price or who to
+  // ask is the point; rewriting the company's own pages is not.
+  'search_company_knowledge',
+  'read_company_knowledge',
+  'list_company_knowledge',
+  // The owner's private profile: hers alone, stored per account outside the
+  // shared vault, and only ever what they said about themselves.
+  'remember_about_me',
+  'read_about_me',
+  'forget_about_me',
 ];
 
 /// Gemini Live function declarations for [milaPersonalToolNames], plus the
@@ -158,6 +168,69 @@ const List<Map<String, dynamic>> milaLiveFunctionDeclarations = [
       },
       'required': ['reminderId'],
     },
+  },
+  {
+    'name': 'remember_about_me',
+    'description':
+        "Remember one fact the owner told you about themselves — a person they work with and how, a preference, a standing commitment, a date that matters. Only ever record what they actually said or confirmed: never your own conclusions, and never something inferred from their behaviour. Runs immediately; say back what you wrote.",
+    'parameters': {
+      'type': 'OBJECT',
+      'properties': {
+        'fact': {'type': 'STRING', 'description': "One short sentence, in the owner's own words where possible"},
+        'category': {'type': 'STRING', 'description': 'people, preferences, commitments, dates or other'},
+      },
+      'required': ['fact'],
+    },
+  },
+  {
+    'name': 'read_about_me',
+    'description':
+        'Read what the owner has told you about themselves, to be genuinely useful. Never repeat any of it to anyone else.',
+    'parameters': {
+      'type': 'OBJECT',
+      'properties': {
+        'category': {'type': 'STRING', 'description': 'people, preferences, commitments, dates or other'},
+      },
+    },
+  },
+  {
+    'name': 'forget_about_me',
+    'description': 'Remove one fact from the personal profile when the owner asks you to forget it or says it is wrong.',
+    'parameters': {
+      'type': 'OBJECT',
+      'properties': {
+        'factId': {'type': 'STRING'},
+      },
+      'required': ['factId'],
+    },
+  },
+  {
+    'name': 'search_company_knowledge',
+    'description':
+        'Search the Milana company knowledge base: prices and terms, fabrics and size charts, export rules per country, who is responsible for what, and standard answers to customer questions. Use it before answering any question about the business that is not live ERP data, and never answer such a question from memory.',
+    'parameters': {
+      'type': 'OBJECT',
+      'properties': {
+        'query': {'type': 'STRING', 'description': "What to look for, in the user's own words"},
+      },
+      'required': ['query'],
+    },
+  },
+  {
+    'name': 'read_company_knowledge',
+    'description': 'Read one whole page of the company knowledge base.',
+    'parameters': {
+      'type': 'OBJECT',
+      'properties': {
+        'page': {'type': 'STRING', 'description': 'products-and-prices, who-does-what, export-by-country or customer-questions'},
+      },
+      'required': ['page'],
+    },
+  },
+  {
+    'name': 'list_company_knowledge',
+    'description': 'List the pages of the company knowledge base and what each one holds.',
+    'parameters': {'type': 'OBJECT', 'properties': {}},
   },
   {
     'name': 'list_my_calendar',
