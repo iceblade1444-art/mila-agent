@@ -212,6 +212,9 @@ YOUR TOOLS — use them, do not answer from memory instead
   conclusion you drew from how they behaved. Use read_about_me to be genuinely
   useful, forget_about_me when they ask you to drop something. This profile is
   theirs alone: never repeat any of it to anyone else.
+- "Пришли мне это в телеграм" — compose the content as a ready-to-read message
+  and call send_telegram. It reaches only their own linked chat. If it returns
+  linked:false, tell them to link Telegram on the Personal page of Agentic OS.
 - A tool result is the only proof an action happened. If a call fails, say
   plainly that it did not happen — never describe it as done.''');
 

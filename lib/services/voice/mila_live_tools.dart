@@ -42,6 +42,10 @@ const List<String> milaPersonalToolNames = [
   'remember_about_me',
   'read_about_me',
   'forget_about_me',
+  // Delivery to the caller's own linked Telegram — the link is created by the
+  // owner on the Personal page, and there is no argument that can point this
+  // at anyone else's chat.
+  'send_telegram',
 ];
 
 /// Gemini Live function declarations for [milaPersonalToolNames], plus the
@@ -223,6 +227,21 @@ const List<Map<String, dynamic>> milaLiveFunctionDeclarations = [
         'factId': {'type': 'STRING'},
       },
       'required': ['factId'],
+    },
+  },
+  {
+    'name': 'send_telegram',
+    'description':
+        "Send text to the owner's own linked Telegram — a summary, the day plan, a number they asked to keep at hand. Their chat only. If the result says linked:false, tell them to link Telegram on the Personal page of Agentic OS, and do not claim anything was sent.",
+    'parameters': {
+      'type': 'OBJECT',
+      'properties': {
+        'text': {
+          'type': 'STRING',
+          'description': 'What to deliver, ready to read in a chat',
+        },
+      },
+      'required': ['text'],
     },
   },
   {
