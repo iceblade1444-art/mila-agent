@@ -2,7 +2,13 @@ name: mila
 description: "MILA - AI Voice Assistant. Real-time voice and text intelligence via Gemini."
 publish_to: 'none'
 
-version: 1.5.6+28
+# The +N is the Android versionCode, and it is what the in-app updater compares:
+# the phone asks /v1/app/update and the server answers latestCode > currentCode.
+# A release that ships without bumping this line is invisible to every installed
+# app — CI happily built five "new" APKs that all carried +28, and phones
+# correctly reported "already up to date". Bump BOTH halves for a release, then
+# register it on the backend so the phones are told it exists.
+version: 1.5.7+29
 
 environment:
   sdk: ^3.11.5
