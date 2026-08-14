@@ -31,13 +31,19 @@ VERSION=$(sed -n 's/^version: *\([0-9.]*\)+.*/\1/p' pubspec.yaml)
 CODE=$(sed -n 's/^version: *[0-9.]*+\([0-9]*\).*/\1/p' pubspec.yaml)
 [ -n "$VERSION" ] && [ -n "$CODE" ] || { echo "pubspec.yaml has no version: x.y.z+N line" >&2; exit 1; }
 
-# Refuse to publish a build the release does not contain: the rolling release is
-# replaced on every push to main, so it must carry the same commit we sit on.
+# Refuse to register a version the released APK does not carry. The exact HEAD
+# sha is the wrong invariant — commits that touch nothing inside the app (this
+# script, docs) do not trigger a build, so the release legitimately lags them.
+# What must agree is the version line: the APK in the release was built from the
+# pubspec of its commit, and that is the version we are about to tell phones
+# they will get.
 RELEASED_SHA=$(gh release view latest --json body -q .body | grep -oE '`[0-9a-f]{7}`' | tr -d '`' | head -1)
-HEAD_SHA=$(git rev-parse --short=7 HEAD)
-if [ "$RELEASED_SHA" != "$HEAD_SHA" ]; then
-  echo "The rolling release holds \`$RELEASED_SHA\` but HEAD is \`$HEAD_SHA\`." >&2
-  echo "Wait for the 'MILA app' workflow to publish this commit, then rerun." >&2
+git fetch -q origin main
+RELEASED_LINE=$(git show "$RELEASED_SHA:pubspec.yaml" 2>/dev/null | sed -n 's/^version: *//p')
+if [ "$RELEASED_LINE" != "$VERSION+$CODE" ]; then
+  echo "The rolling release was built from \`$RELEASED_SHA\` with version '$RELEASED_LINE'," >&2
+  echo "but pubspec here says '$VERSION+$CODE'. Registering that would promise phones" >&2
+  echo "a version the APK does not carry. Wait for the 'MILA app' workflow, then rerun." >&2
   exit 1
 fi
 
