@@ -6,6 +6,7 @@ import 'features/auth/sign_in_screen.dart';
 import 'features/calendar/calendar_screen.dart';
 import 'features/chat/chat_screen.dart';
 import 'features/command/command_center_screen.dart';
+import 'features/day/day_plan_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/integrations/integrations_screen.dart';
 import 'features/memory/memory_screen.dart';
@@ -17,6 +18,8 @@ import 'features/settings/settings_screen.dart';
 import 'features/shell/shell_screen.dart';
 import 'features/splash/splash_screen.dart';
 import 'features/tasks/tasks_screen.dart';
+import 'features/team/team_chat_screen.dart';
+import 'features/team/team_thread_screen.dart';
 import 'features/voice/voice_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -52,6 +55,15 @@ final routerProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(path: '/memory', builder: (_, _) => const MemoryScreen()),
+      GoRoute(path: '/day', builder: (_, _) => const DayPlanScreen()),
+      GoRoute(path: '/team', builder: (_, _) => const TeamChatScreen()),
+      GoRoute(
+        path: '/team/:id',
+        builder: (_, state) => TeamThreadScreen(
+          conversationId: state.pathParameters['id'] ?? '',
+          title: state.extra is String ? state.extra! as String : 'Chat',
+        ),
+      ),
       GoRoute(
         path: '/integrations',
         builder: (_, _) => const IntegrationsScreen(),

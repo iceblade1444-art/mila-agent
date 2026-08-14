@@ -52,7 +52,11 @@ void main() {
   test('declarations are shaped the way Gemini Live expects', () {
     for (final tool in milaLiveFunctionDeclarations) {
       final name = tool['name'] as String;
-      expect(tool['description'], isA<String>(), reason: '$name needs a description');
+      expect(
+        tool['description'],
+        isA<String>(),
+        reason: '$name needs a description',
+      );
       expect((tool['description'] as String).length, greaterThan(20));
       final parameters = mapAt(tool, 'parameters');
       expect(parameters['type'], 'OBJECT', reason: '$name parameters');
@@ -76,9 +80,13 @@ void main() {
   });
 
   test('remind_me spells out that the time must be absolute', () {
-    final remind = milaLiveFunctionDeclarations
-        .firstWhere((tool) => tool['name'] == 'remind_me');
-    final due = mapAt(mapAt(mapAt(remind, 'parameters'), 'properties'), 'dueAt');
+    final remind = milaLiveFunctionDeclarations.firstWhere(
+      (tool) => tool['name'] == 'remind_me',
+    );
+    final due = mapAt(
+      mapAt(mapAt(remind, 'parameters'), 'properties'),
+      'dueAt',
+    );
     // A relative "in an hour" would be resolved by the server's clock, not the
     // user's, so the declaration has to demand an offset.
     expect(due['description'], contains('ISO 8601'));

@@ -186,8 +186,15 @@ const List<Map<String, dynamic>> milaLiveFunctionDeclarations = [
     'parameters': {
       'type': 'OBJECT',
       'properties': {
-        'fact': {'type': 'STRING', 'description': "One short sentence, in the owner's own words where possible"},
-        'category': {'type': 'STRING', 'description': 'people, preferences, commitments, dates or other'},
+        'fact': {
+          'type': 'STRING',
+          'description':
+              "One short sentence, in the owner's own words where possible",
+        },
+        'category': {
+          'type': 'STRING',
+          'description': 'people, preferences, commitments, dates or other',
+        },
       },
       'required': ['fact'],
     },
@@ -199,13 +206,17 @@ const List<Map<String, dynamic>> milaLiveFunctionDeclarations = [
     'parameters': {
       'type': 'OBJECT',
       'properties': {
-        'category': {'type': 'STRING', 'description': 'people, preferences, commitments, dates or other'},
+        'category': {
+          'type': 'STRING',
+          'description': 'people, preferences, commitments, dates or other',
+        },
       },
     },
   },
   {
     'name': 'forget_about_me',
-    'description': 'Remove one fact from the personal profile when the owner asks you to forget it or says it is wrong.',
+    'description':
+        'Remove one fact from the personal profile when the owner asks you to forget it or says it is wrong.',
     'parameters': {
       'type': 'OBJECT',
       'properties': {
@@ -221,7 +232,10 @@ const List<Map<String, dynamic>> milaLiveFunctionDeclarations = [
     'parameters': {
       'type': 'OBJECT',
       'properties': {
-        'query': {'type': 'STRING', 'description': "What to look for, in the user's own words"},
+        'query': {
+          'type': 'STRING',
+          'description': "What to look for, in the user's own words",
+        },
       },
       'required': ['query'],
     },
@@ -232,14 +246,19 @@ const List<Map<String, dynamic>> milaLiveFunctionDeclarations = [
     'parameters': {
       'type': 'OBJECT',
       'properties': {
-        'page': {'type': 'STRING', 'description': 'products-and-prices, who-does-what, export-by-country or customer-questions'},
+        'page': {
+          'type': 'STRING',
+          'description':
+              'products-and-prices, who-does-what, export-by-country or customer-questions',
+        },
       },
       'required': ['page'],
     },
   },
   {
     'name': 'list_company_knowledge',
-    'description': 'List the pages of the company knowledge base and what each one holds.',
+    'description':
+        'List the pages of the company knowledge base and what each one holds.',
     'parameters': {'type': 'OBJECT', 'properties': {}},
   },
   {

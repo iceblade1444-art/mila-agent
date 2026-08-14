@@ -9,11 +9,13 @@ void main() {
   // prompt. This is that reconciliation: a tool the phone can run has to be a
   // tool the prompt actually tells her about, or she has it and never uses it.
   test('the voice prompt mentions the tools the phone can run', () {
-    final source = File(
-      'lib/services/llm/llm_service.dart',
-    ).readAsStringSync();
+    final source = File('lib/services/llm/llm_service.dart').readAsStringSync();
     final start = source.indexOf('YOUR TOOLS');
-    expect(start, greaterThan(-1), reason: 'the voice prompt must describe them');
+    expect(
+      start,
+      greaterThan(-1),
+      reason: 'the voice prompt must describe them',
+    );
     final block = source.substring(start, start + 1600);
 
     for (final name in [
@@ -32,7 +34,10 @@ void main() {
     }
 
     // The rules that make the tools worth having at all.
-    expect(block, contains('Never answer a question about the business from memory'));
+    expect(
+      block,
+      contains('Never answer a question about the business from memory'),
+    );
     expect(block, contains('never repeat any of it to anyone else'));
     expect(block, contains('never describe it as done'));
   });

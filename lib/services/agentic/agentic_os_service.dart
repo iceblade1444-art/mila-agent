@@ -7,6 +7,8 @@ import 'package:http/http.dart' as http;
 import '../../core/config/app_config.dart';
 import '../../data/models.dart';
 import '../storage/stores.dart';
+import 'day_plan_models.dart';
+import 'team_chat_models.dart';
 
 class AgenticOsException implements Exception {
   const AgenticOsException(this.message);
@@ -354,6 +356,108 @@ class AgenticOsService {
 
   Future<void> disconnectGoogleCalendar({http.Client? client}) async {
     await _request('DELETE', '/api/personal/google', client: client);
+  }
+
+  // ---------- corporate chat ----------
+  //
+  // The same messenger the web dashboard uses, over the same routes. Membership
+  // is the whole access model and it lives server-side: this client only ever
+  // sees threads this account belongs to, and a thread it is not in returns
+  // 403, not an empty list.
+
+  Future<TeamChatHome> teamChatHome({http.Client? client}) async {
+    final json = await _request('GET', '/api/messenger/', client: client);
+    return TeamChatHome.fromJson(json);
+  }
+
+  Future<List<TeamMessage>> teamMessages(
+    String conversationId, {
+    int limit = 50,
+    http.Client? client,
+  }) async {
+    final json = await _request(
+      'GET',
+      '/api/messenger/${Uri.encodeComponent(conversationId)}/messages?limit=$limit',
+      client: client,
+    );
+    return ((json['messages'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((value) => TeamMessage.fromJson(value.cast<String, dynamic>()))
+        .toList(growable: false);
+  }
+
+  Future<void> sendTeamMessage(
+    String conversationId,
+    String text, {
+    http.Client? client,
+  }) async {
+    await _request(
+      'POST',
+      '/api/messenger/${Uri.encodeComponent(conversationId)}/messages',
+      body: {'text': text},
+      client: client,
+    );
+  }
+
+  /// Moves this account's read watermark to the end of the thread. Fire and
+  /// forget from the UI: a failed markRead must never break reading.
+  Future<void> markTeamRead(
+    String conversationId, {
+    http.Client? client,
+  }) async {
+    await _request(
+      'POST',
+      '/api/messenger/${Uri.encodeComponent(conversationId)}/read',
+      client: client,
+    );
+  }
+
+  /// Opens (or returns the existing) direct thread with one colleague. The
+  /// server keys direct threads by the pair, so calling this twice can never
+  /// produce two threads with the same person.
+  Future<TeamConversation> openDirectThread(
+    String otherId, {
+    http.Client? client,
+  }) async {
+    final json = await _request(
+      'POST',
+      '/api/messenger/direct',
+      body: {'userId': otherId},
+      client: client,
+    );
+    return TeamConversation.fromJson(json);
+  }
+
+  // ---------- personal day ----------
+
+  /// The live day plan — calendar, focus blocks and alerts merged server-side.
+  /// Goes through the same action MILA herself uses, so the screen and her
+  /// spoken answer can never describe two different days.
+  Future<DayPlan> dayPlan({bool refresh = false, http.Client? client}) async {
+    final json = await runMilaAction('get_my_day_plan', {
+      if (refresh) 'refresh': true,
+    }, client: client);
+    final plan = (json['plan'] as Map?)?.cast<String, dynamic>();
+    if (plan == null) {
+      throw const AgenticOsException('Agentic OS returned no day plan.');
+    }
+    return DayPlan.fromJson(plan);
+  }
+
+  Future<List<PersonalReminder>> pendingReminders({http.Client? client}) async {
+    final json = await runMilaAction('list_my_reminders', {}, client: client);
+    return ((json['reminders'] as List?) ?? const [])
+        .whereType<Map>()
+        .map(
+          (value) => PersonalReminder.fromJson(value.cast<String, dynamic>()),
+        )
+        .toList(growable: false);
+  }
+
+  Future<void> cancelReminder(String reminderId, {http.Client? client}) async {
+    await runMilaAction('cancel_reminder', {
+      'reminderId': reminderId,
+    }, client: client);
   }
 
   Future<Map<String, dynamic>> _request(

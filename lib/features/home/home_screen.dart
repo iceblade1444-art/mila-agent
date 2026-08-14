@@ -119,6 +119,65 @@ class _HomeBody extends ConsumerWidget {
         ),
         const SizedBox(height: 24),
         _AgenticDashboardCard(state: dashboardState),
+        const SizedBox(height: 12),
+        // The two screens people open all day live one tap from the top.
+        Row(
+          children: [
+            Expanded(
+              child: GlassCard(
+                onTap: () => context.push('/day'),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 14,
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.wb_sunny_outlined,
+                      size: 20,
+                      color: MilaColors.cyan,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        l10n.pick(ru: 'Мой день', en: 'My day', uz: 'Kunim'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: GlassCard(
+                onTap: () => context.push('/team'),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 14,
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.forum_outlined,
+                      size: 20,
+                      color: MilaColors.violet,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        l10n.pick(ru: 'Команда', en: 'Team', uz: 'Jamoa'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
         const SizedBox(height: 24),
         SectionHeader(
           title: l10n.pick(ru: 'Подсказки', en: 'Suggestions', uz: 'Takliflar'),

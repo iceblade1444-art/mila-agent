@@ -47,8 +47,7 @@ class UpdateService {
     final currentVersion = package.version.trim().isEmpty
         ? '0.0.0'
         : package.version.trim();
-    final currentVersionCode =
-        int.tryParse(package.buildNumber.trim()) ?? 0;
+    final currentVersionCode = int.tryParse(package.buildNumber.trim()) ?? 0;
     final secure = _ref.read(secureStoreProvider);
     final baseUrl = AppConfig.configuredBackendUrl(
       await secure.read(SecureStore.milaBackendUrl),
