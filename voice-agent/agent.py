@@ -258,7 +258,48 @@ SERVED_PROMPT_TOOLS = [
 ]
 
 
-def fetch_voice_instruction(profile: dict, language: str, timeout: float = 8.0) -> str:
+def fetch_agent_token(owner: dict, channel: str = "mobile", timeout: float = 6.0) -> str:
+    """Trade the installation's service credential for one that names the caller.
+
+    The service token resolves to the owner on the Agentic OS side, so an agent
+    presenting it *is* the owner - on everybody's call. That is why the prompt it
+    used to receive carried the owner's private profile and the company day
+    journal into calls placed by other people, and why the personal desk (tasks,
+    reminders, calendar) could not be given to this agent at all: whose tasks
+    would it have opened?
+
+    This asks Agentic OS for a credential naming one person, valid for about the
+    length of a call, carrying the channel it may speak through. It grants
+    nothing by itself - every action taken with it is checked against what a
+    voice call may carry, so the shell, the vault and the Kanban stay out of
+    reach even when the caller is the owner.
+
+    Never raises. An empty result means "we could not prove who is calling", and
+    the caller must then ask for the unnamed prompt rather than the owner's.
+    """
+    base_url = os.getenv("AGENTIC_OS_URL", "").rstrip("/")
+    token = os.getenv("AGENTIC_OS_TOKEN", "")
+    user_id = str((owner or {}).get("id") or "").strip()
+    if not base_url or not token or not user_id:
+        return ""
+    http_request = urllib.request.Request(
+        f"{base_url}/api/mila/agent-token",
+        data=json.dumps({"userId": user_id, "channel": channel}).encode(),
+        method="POST",
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(http_request, timeout=timeout) as response:
+            payload = json.loads(response.read(65536).decode("utf-8"))
+    except (OSError, TimeoutError, ValueError, urllib.error.HTTPError):
+        return ""
+    minted = payload.get("token")
+    return minted.strip() if isinstance(minted, str) else ""
+
+
+def fetch_voice_instruction(
+    profile: dict, language: str, timeout: float = 8.0, caller_token: str = ""
+) -> str:
     """The prompt Agentic OS composes for its own browser client.
 
     Single source of truth: the browser and this agent used to build the prompt
@@ -302,7 +343,14 @@ def fetch_voice_instruction(profile: dict, language: str, timeout: float = 8.0) 
         f"{base_url}/api/mila/voice-instruction",
         data=body,
         method="POST",
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        headers={
+            # The caller's own credential when we have one: it makes the prompt
+            # theirs rather than the owner's. Without it Agentic OS recognises a
+            # service credential and answers with the shared audience, which is
+            # the company's context and none of anybody's private half.
+            "Authorization": f"Bearer {caller_token or token}",
+            "Content-Type": "application/json",
+        },
     )
     try:
         with urllib.request.urlopen(http_request, timeout=timeout) as response:
@@ -801,6 +849,9 @@ async def mila_session(ctx: JobContext):
     language = "auto"
     raw_profile = {}
     raw_erp_context = {}
+    # Initialised here, not only inside the try: unparsable metadata must leave
+    # an unnamed caller, not an undefined name.
+    raw_owner = {}
     try:
         metadata = {}
         for metadata_source in (
@@ -815,14 +866,31 @@ async def mila_session(ctx: JobContext):
         language = str(metadata.get("language") or "auto")
         raw_profile = metadata.get("profile") or {}
         raw_erp_context = metadata.get("erp") or {}
+        # Who placed this call. The backend knows - it authenticated the session
+        # before minting the room pass - and now says so here, because an agent
+        # that cannot name its caller has to be treated as nobody in particular.
+        raw_owner = metadata.get("owner") or {}
     except (TypeError, ValueError):
         pass
     profile = normalize_live_profile(raw_profile)
     # Ask Agentic OS for the prompt it gives its own client, so both surfaces
     # speak with one assistant. Fetched off the event loop so a slow reply
     # cannot delay the greeting.
+    # A credential naming the caller, so the prompt is theirs and not the
+    # owner's. Minted per call and expiring with it; if it cannot be minted the
+    # request goes out unnamed and Agentic OS answers with the shared audience.
+    caller = raw_owner if isinstance(raw_owner, dict) else {}
+    caller_token = await asyncio.to_thread(fetch_agent_token, caller)
+    if caller_token:
+        print(f"[voice] call identified as {caller.get('id') or 'unknown'}", flush=True)
+    else:
+        print("[voice] caller not identified - asking for the shared-audience prompt", flush=True)
     served_instruction = await asyncio.to_thread(
-        fetch_voice_instruction, raw_profile if isinstance(raw_profile, dict) else {}, language
+        fetch_voice_instruction,
+        raw_profile if isinstance(raw_profile, dict) else {},
+        language,
+        8.0,
+        caller_token,
     )
     session_instructions = compose_session_instructions(profile, served_instruction)
     if not served_instruction:

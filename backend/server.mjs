@@ -1146,6 +1146,13 @@ export function createMilaServer(options = {}) {
           metadata: JSON.stringify({
             language,
             profile,
+            // Who placed the call. The participant pass has carried this all
+            // along, but the agent reads room metadata, so it never learned who
+            // it was speaking to — and therefore authenticated to Agentic OS as
+            // the installation itself, which resolves to the owner. It was the
+            // owner on everybody's call. Naming the caller here is what lets it
+            // ask for a credential of their own instead.
+            ...(owner ? {owner: normalizeOwner(owner)} : {}),
             ...(erp ? {erp} : {}),
             source: 'agentic-os',
           }),

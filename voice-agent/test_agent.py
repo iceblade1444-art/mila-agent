@@ -356,3 +356,91 @@ class ErpInstructionTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CallerIdentityTest(unittest.TestCase):
+    """A call is answered as the person who placed it, or as nobody at all.
+
+    The service credential resolves to the owner on the Agentic OS side, so an
+    agent presenting it was the owner on everybody's call — and the prompt it
+    received carried the owner's private profile into calls placed by other
+    people. These tests hold the two halves of the fix: ask for a credential
+    that names the caller, and when that is impossible, go out unnamed rather
+    than borrowing the owner's name.
+    """
+
+    def setUp(self):
+        self.env = unittest.mock.patch.dict(
+            "os.environ",
+            {"AGENTIC_OS_URL": "http://agentic-os:8787", "AGENTIC_OS_TOKEN": "service-token"},
+        )
+        self.env.start()
+        self.addCleanup(self.env.stop)
+
+    def _response(self, payload):
+        response = unittest.mock.MagicMock()
+        response.read.return_value = json.dumps(payload).encode()
+        response.__enter__.return_value = response
+        return response
+
+    def test_the_caller_is_named_when_asking_for_a_token(self):
+        captured = {}
+
+        def urlopen(request, timeout=None):
+            captured["url"] = request.full_url
+            captured["body"] = json.loads(request.data.decode())
+            captured["auth"] = request.headers.get("Authorization")
+            return self._response({"token": "minted-for-them", "expiresInSeconds": 1200})
+
+        with unittest.mock.patch("urllib.request.urlopen", urlopen):
+            token = agent.fetch_agent_token({"id": "usr_2", "name": "Сотрудник"})
+
+        self.assertEqual(token, "minted-for-them")
+        self.assertTrue(captured["url"].endswith("/api/mila/agent-token"))
+        self.assertEqual(captured["body"]["userId"], "usr_2")
+        self.assertEqual(captured["body"]["channel"], "mobile")
+        # Only the service credential may mint on someone's behalf.
+        self.assertEqual(captured["auth"], "Bearer service-token")
+
+    def test_an_unknown_caller_mints_nothing(self):
+        called = []
+
+        def urlopen(request, timeout=None):
+            called.append(request.full_url)
+            return self._response({"token": "should-not-be-requested"})
+
+        with unittest.mock.patch("urllib.request.urlopen", urlopen):
+            self.assertEqual(agent.fetch_agent_token({}), "")
+            self.assertEqual(agent.fetch_agent_token({"name": "без id"}), "")
+        self.assertEqual(called, [], "a call we cannot attribute must not ask for anybody's token")
+
+    def test_a_failed_mint_is_silent_rather_than_fatal(self):
+        def urlopen(request, timeout=None):
+            raise OSError("Agentic OS unreachable")
+
+        with unittest.mock.patch("urllib.request.urlopen", urlopen):
+            self.assertEqual(agent.fetch_agent_token({"id": "creator"}), "")
+
+    def test_the_instruction_is_requested_as_the_caller_when_known(self):
+        seen = {}
+
+        def urlopen(request, timeout=None):
+            seen["auth"] = request.headers.get("Authorization")
+            return self._response({"instruction": "prompt", "tools": []})
+
+        with unittest.mock.patch("urllib.request.urlopen", urlopen):
+            agent.fetch_voice_instruction({}, "ru-RU", 8.0, "minted-for-them")
+        self.assertEqual(seen["auth"], "Bearer minted-for-them")
+
+    def test_without_a_caller_token_the_request_stays_the_service_one(self):
+        # Agentic OS recognises the service credential and answers with the
+        # shared audience: the company's context, none of anybody's private half.
+        seen = {}
+
+        def urlopen(request, timeout=None):
+            seen["auth"] = request.headers.get("Authorization")
+            return self._response({"instruction": "prompt", "tools": []})
+
+        with unittest.mock.patch("urllib.request.urlopen", urlopen):
+            agent.fetch_voice_instruction({}, "ru-RU")
+        self.assertEqual(seen["auth"], "Bearer service-token")
