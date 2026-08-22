@@ -41,7 +41,9 @@ class _BottomBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final items = [
-      (Icons.home_rounded, l10n.pick(ru: 'Главная', en: 'Home', uz: 'Bosh'), 0),
+      // "Today", as on the web: same concept, same word, so a person who
+      // learns one surface knows the other.
+      (Icons.home_rounded, l10n.pick(ru: 'Сегодня', en: 'Today', uz: 'Bugun'), 0),
       (
         Icons.grid_view_rounded,
         l10n.pick(ru: 'Центр', en: 'Center', uz: 'Markaz'),
