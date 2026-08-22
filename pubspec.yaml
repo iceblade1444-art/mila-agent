@@ -8,7 +8,7 @@ publish_to: 'none'
 # app — CI happily built five "new" APKs that all carried +28, and phones
 # correctly reported "already up to date". Bump BOTH halves for a release, then
 # register it on the backend so the phones are told it exists.
-version: 1.5.9+31
+version: 1.6.0+32
 
 environment:
   sdk: ^3.11.5
