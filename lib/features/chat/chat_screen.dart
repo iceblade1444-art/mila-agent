@@ -1453,7 +1453,7 @@ class _PendingAttachment extends StatelessWidget {
           onTap: onRemove,
           child: const CircleAvatar(
             radius: 10,
-            backgroundColor: MilaColors.danger,
+            backgroundColor: MilaColors.dangerFill,
             child: Icon(Icons.close_rounded, size: 14, color: Colors.white),
           ),
         ),

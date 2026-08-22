@@ -491,7 +491,7 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
         padding: const EdgeInsets.only(bottom: 92),
         child: FloatingActionButton.extended(
           onPressed: _create,
-          backgroundColor: MilaColors.violet,
+          backgroundColor: MilaColors.violetFill,
           icon: const Icon(Icons.add_rounded, color: Colors.white),
           label: Text(
             _automations
