@@ -31,6 +31,40 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Fast, and deliberately not a dependency of the build below: a missing
+  # version bump and a compile error are different problems, and finding one
+  # should not hide the other. This answers in seconds; the APK takes fourteen
+  # minutes.
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The check compares two refs, which the default shallow clone of a
+          # single commit cannot do.
+          fetch-depth: 0
+      - name: A change that ships into the app must move the version
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # Fetched by name rather than assumed: on a pull_request the
+            # checkout is the merge ref, and whether it leaves a usable
+            # origin/<base> behind is an implementation detail of the action.
+            git fetch -q origin \
+              "+refs/heads/${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
+            base="origin/${{ github.base_ref }}"
+          else
+            base="${{ github.event.before }}"
+            # All-zeros on a branch's first push, and a force-push can name a
+            # sha that is no longer reachable. Either way the previous commit
+            # is the honest comparison.
+            case "$base" in
+              0000000000000000000000000000000000000000|"") base="HEAD~1" ;;
+              *) git cat-file -e "$base^{commit}" 2>/dev/null || base="HEAD~1" ;;
+            esac
+          fi
+          bash scripts/check-version-bump.sh "$base"
+
   flutter:
     runs-on: ubuntu-latest
     # Needed to publish the build to the rolling release below.
