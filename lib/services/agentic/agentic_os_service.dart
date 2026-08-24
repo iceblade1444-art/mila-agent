@@ -8,6 +8,7 @@ import '../../core/config/app_config.dart';
 import '../../data/models.dart';
 import '../storage/stores.dart';
 import 'day_plan_models.dart';
+import 'feed_models.dart';
 import 'team_chat_models.dart';
 
 class AgenticOsException implements Exception {
@@ -95,6 +96,28 @@ class AgenticOsService {
   Future<AgenticDashboard> dashboard({http.Client? client}) async {
     final json = await _request('GET', '/api/member/dashboard', client: client);
     return AgenticDashboard.fromJson(json);
+  }
+  /// What is blocked on this person, worst first. Server-scoped by role: a
+  /// Member never has the fleet sources fetched for them at all.
+  Future<NeedsYou> needsYou({http.Client? client}) async {
+    final json = await _request('GET', '/api/needs-you', client: client);
+    return NeedsYou.fromJson(json);
+  }
+
+  /// What MILA did for this person, newest first. The endpoint takes no user
+  /// parameter, so there is nothing here that could ask for anyone else's.
+  Future<List<ActivityEntry>> activity({http.Client? client}) async {
+    // _request, not _requestList: the endpoint answers { items, count }, and
+    // _requestList returns an empty list for anything that is not a bare
+    // array — which would render as "nothing happened" instead of an error.
+    final json = await _request('GET', '/api/activity', client: client);
+    final raw = json['items'];
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((item) => ActivityEntry.fromJson(item.cast<String, dynamic>()))
+        .where((entry) => entry.title.isNotEmpty)
+        .toList();
   }
 
   Future<List<AgenticTask>> listTasks({http.Client? client}) async {

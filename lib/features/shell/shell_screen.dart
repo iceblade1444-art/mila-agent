@@ -1,14 +1,25 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/i18n/mila_localizations.dart';
 import '../../core/theme/mila_theme.dart';
-import '../../core/widgets/voice_orb.dart';
+import 'composer_bar.dart';
 
-/// App shell: indexed tab stack + floating bottom navigation with the
-/// MILA orb as the center voice button.
+/// App shell: an indexed tab stack, the composer, and four named destinations.
+///
+/// Three things were wrong with what this replaced, and all three were visible
+/// on a screenshot:
+///
+///   * The bar drew icons only. The label existed in the code — destructured
+///     out of the tuple on the first line of the item builder — and was passed
+///     to nothing. Five glyphs and no words is a memory test, and it is the
+///     same mistake the web rail made until it was fixed there.
+///   * The centre slot held an orb, and the home screen held a second one at
+///     150px. Two doors to the same room, one of them taking up most of the
+///     first screen.
+///   * It was a hand-rolled Row, so none of Material 3's spring motion, ink or
+///     accessible sizing applied. NavigationBar gives all of that away for free
+///     and takes the labels seriously.
 class ShellScreen extends StatelessWidget {
   const ShellScreen({super.key, required this.shell});
 
@@ -16,168 +27,109 @@ class ShellScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // While the keyboard is up the composer would sit on top of it and the bar
+    // would eat a third of what is left. Both step aside; the field being typed
+    // into is the only thing that matters at that moment.
     final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
+
     return Scaffold(
-      extendBody: true,
+      backgroundColor: MilaColors.background,
       body: shell,
-      bottomNavigationBar: AnimatedSwitcher(
+      bottomNavigationBar: AnimatedSize(
         duration: const Duration(milliseconds: 180),
-        switchInCurve: Curves.easeOutCubic,
-        switchOutCurve: Curves.easeInCubic,
+        curve: Curves.easeOutCubic,
+        alignment: Alignment.topCenter,
         child: keyboardOpen
-            ? const SizedBox.shrink(key: ValueKey('keyboard-hidden-nav'))
-            : _BottomBar(key: const ValueKey('bottom-nav'), shell: shell),
+            ? const SizedBox(width: double.infinity)
+            : _Bottom(shell: shell),
       ),
     );
   }
 }
 
-class _BottomBar extends StatelessWidget {
-  const _BottomBar({super.key, required this.shell});
+class _Bottom extends StatelessWidget {
+  const _Bottom({required this.shell});
 
   final StatefulNavigationShell shell;
 
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final items = [
-      // "Today", as on the web: same concept, same word, so a person who
-      // learns one surface knows the other.
-      (Icons.home_rounded, l10n.pick(ru: 'Сегодня', en: 'Today', uz: 'Bugun'), 0),
-      (
-        Icons.grid_view_rounded,
-        l10n.pick(ru: 'Центр', en: 'Center', uz: 'Markaz'),
-        1,
+
+    // Same words and same order as the web console's bottom tabs. A floor
+    // manager who learns one surface should not have to learn the other.
+    final destinations = <NavigationDestination>[
+      NavigationDestination(
+        icon: const Icon(Icons.today_outlined),
+        selectedIcon: const Icon(Icons.today),
+        label: l10n.pick(ru: 'Лента', en: 'Feed', uz: 'Lenta'),
       ),
-      (
-        Icons.chat_bubble_outline_rounded,
-        l10n.pick(ru: 'Чат', en: 'Chat', uz: 'Chat'),
-        2,
+      NavigationDestination(
+        icon: const Icon(Icons.check_circle_outline),
+        selectedIcon: const Icon(Icons.check_circle),
+        label: l10n.pick(ru: 'Задачи', en: 'Tasks', uz: 'Vazifalar'),
       ),
-      (
-        Icons.check_circle_outline_rounded,
-        l10n.pick(ru: 'Задачи', en: 'Tasks', uz: 'Vazifalar'),
-        3,
+      NavigationDestination(
+        icon: const Icon(Icons.wb_sunny_outlined),
+        selectedIcon: const Icon(Icons.wb_sunny),
+        label: l10n.pick(ru: 'День', en: 'Day', uz: 'Kun'),
+      ),
+      NavigationDestination(
+        icon: const Icon(Icons.menu_rounded),
+        selectedIcon: const Icon(Icons.menu_open_rounded),
+        label: l10n.pick(ru: 'Ещё', en: 'More', uz: 'Yana'),
       ),
     ];
 
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 18,
-        right: 18,
-        bottom: MediaQuery.paddingOf(context).bottom + 8,
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-          child: Container(
-            height: 58,
-            decoration: BoxDecoration(
-              color: const Color(0xFF141926).withValues(alpha: 0.82),
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: MilaColors.cardBorder),
-            ),
-            child: Row(
-              children: [
-                _navItem(context, items[0]),
-                _navItem(context, items[1]),
-                Expanded(
-                  child: Center(
-                    child: GestureDetector(
-                      onTap: () => context.push('/voice'),
-                      child: Container(
-                        width: 46,
-                        height: 46,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: MilaColors.violet.withValues(alpha: 0.45),
-                              blurRadius: 18,
-                            ),
-                          ],
-                        ),
-                        child: const AdaptiveOrb(size: 46),
-                      ),
-                    ),
-                  ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const ComposerBar(),
+        DecoratedBox(
+          decoration: const BoxDecoration(
+            border: Border(top: BorderSide(color: MilaColors.cardBorder)),
+          ),
+          child: NavigationBarTheme(
+            data: NavigationBarThemeData(
+              backgroundColor: MilaColors.surface,
+              indicatorColor: MilaColors.violetFill.withValues(alpha: 0.22),
+              // Always, on both states. A label that appears only under the
+              // selected item still leaves the other three unnamed, which is
+              // the problem this is here to solve.
+              labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+              iconTheme: WidgetStateProperty.resolveWith(
+                (states) => IconThemeData(
+                  size: 22,
+                  color: states.contains(WidgetState.selected)
+                      ? MilaColors.violet
+                      : MilaColors.textTertiary,
                 ),
-                _navItem(context, items[2]),
-                _navItem(context, items[3]),
-              ],
+              ),
+              labelTextStyle: WidgetStateProperty.resolveWith(
+                (states) => TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  color: states.contains(WidgetState.selected)
+                      ? MilaColors.violet
+                      : MilaColors.textTertiary,
+                ),
+              ),
+            ),
+            child: NavigationBar(
+              height: 62,
+              selectedIndex: shell.currentIndex,
+              onDestinationSelected: (index) => shell.goBranch(
+                index,
+                // Tapping the tab you are already on returns to the top of that
+                // branch rather than doing nothing — the standard gesture for
+                // getting out of a stack you have wandered into.
+                initialLocation: index == shell.currentIndex,
+              ),
+              destinations: destinations,
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _navItem(BuildContext context, (IconData, String, int) item) {
-    final (icon, label, index) = item;
-    final selected = shell.currentIndex == index;
-    return Expanded(
-      child: InkWell(
-        onTap: () =>
-            shell.goBranch(index, initialLocation: index == shell.currentIndex),
-        borderRadius: BorderRadius.circular(20),
-        child: AnimatedScale(
-          scale: selected ? 1.08 : 1,
-          duration: const Duration(milliseconds: 260),
-          curve: Curves.easeOutBack,
-          child: AnimatedSlide(
-            offset: selected ? const Offset(0, -0.06) : Offset.zero,
-            duration: const Duration(milliseconds: 260),
-            curve: Curves.easeOutCubic,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 260),
-                  curve: Curves.easeOutCubic,
-                  width: 32,
-                  height: 30,
-                  decoration: BoxDecoration(
-                    color: selected
-                        ? MilaColors.cyan.withValues(alpha: 0.1)
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: selected
-                        ? [
-                            BoxShadow(
-                              color: MilaColors.cyan.withValues(alpha: 0.14),
-                              blurRadius: 10,
-                            ),
-                          ]
-                        : const [],
-                  ),
-                  child: AnimatedRotation(
-                    turns: selected ? 0 : -0.015,
-                    duration: const Duration(milliseconds: 260),
-                    child: Icon(
-                      icon,
-                      size: 21,
-                      color: selected
-                          ? MilaColors.cyan
-                          : MilaColors.textTertiary,
-                    ),
-                  ),
-                ),
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 260),
-                  curve: Curves.easeOutCubic,
-                  width: selected ? 14 : 0,
-                  height: 3,
-                  decoration: BoxDecoration(
-                    gradient: MilaColors.primaryGradient,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+      ],
     );
   }
 }

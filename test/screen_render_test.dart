@@ -158,15 +158,21 @@ void main() {
     await capture(tester, tasksKey, 'screen_agentic_tasks');
   });
 
-  testWidgets('chat composer sits directly above the animated bottom bar', (
+  testWidgets('the composer sits directly above the bar and clears it', (
     tester,
   ) async {
+    // This used to look for the chat tab's icon. Chat left the bar — the
+    // composer above it is how MILA is reached now — but the thing the test
+    // was protecting still matters: the composer and the bar are stacked in
+    // one column, and if either grows the other gets covered.
     await tester.binding.setSurfaceSize(const Size(412, 915));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final store = _RenderStore();
     final shellKey = GlobalKey();
+    GoRoute stub(String path) =>
+        GoRoute(path: path, builder: (_, _) => const SizedBox.shrink());
     final router = GoRouter(
-      initialLocation: '/chat',
+      initialLocation: '/home',
       routes: [
         StatefulShellRoute.indexedStack(
           builder: (_, _, shell) => RepaintBoundary(
@@ -174,35 +180,10 @@ void main() {
             child: ShellScreen(shell: shell),
           ),
           branches: [
-            StatefulShellBranch(
-              routes: [
-                GoRoute(
-                  path: '/home',
-                  builder: (_, _) => const SizedBox.shrink(),
-                ),
-              ],
-            ),
-            StatefulShellBranch(
-              routes: [
-                GoRoute(
-                  path: '/command',
-                  builder: (_, _) => const SizedBox.shrink(),
-                ),
-              ],
-            ),
-            StatefulShellBranch(
-              routes: [
-                GoRoute(path: '/chat', builder: (_, _) => const ChatScreen()),
-              ],
-            ),
-            StatefulShellBranch(
-              routes: [
-                GoRoute(
-                  path: '/tasks',
-                  builder: (_, _) => const SizedBox.shrink(),
-                ),
-              ],
-            ),
+            StatefulShellBranch(routes: [stub('/home')]),
+            StatefulShellBranch(routes: [stub('/tasks')]),
+            StatefulShellBranch(routes: [stub('/day')]),
+            StatefulShellBranch(routes: [stub('/more')]),
           ],
         ),
       ],
@@ -221,12 +202,14 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 700));
 
-    final composerBottom = tester.getBottomLeft(find.byType(TextField)).dy;
+    final composerBottom = tester
+        .getBottomLeft(find.byIcon(Icons.mic_none_rounded))
+        .dy;
     final navigationIconTop = tester
-        .getTopLeft(find.byIcon(Icons.chat_bubble_outline_rounded).last)
+        .getTopLeft(find.byIcon(Icons.today).last)
         .dy;
     expect(composerBottom, lessThan(navigationIconTop));
     expect(navigationIconTop - composerBottom, lessThan(38));
-    await capture(tester, shellKey, 'screen_chat_shell');
+    await capture(tester, shellKey, 'screen_home_shell');
   });
 }

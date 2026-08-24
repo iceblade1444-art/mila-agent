@@ -10,6 +10,7 @@ import 'features/day/day_plan_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/integrations/integrations_screen.dart';
 import 'features/memory/memory_screen.dart';
+import 'features/more/more_screen.dart';
 import 'features/onboarding/assistant_setup_screen.dart';
 import 'features/onboarding/onboarding_screen.dart';
 import 'features/permissions/permissions_screen.dart';
@@ -55,7 +56,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(path: '/memory', builder: (_, _) => const MemoryScreen()),
-      GoRoute(path: '/day', builder: (_, _) => const DayPlanScreen()),
+      GoRoute(path: '/chat', builder: (_, _) => const ChatScreen()),
+      GoRoute(
+        path: '/command',
+        builder: (_, _) => const CommandCenterScreen(),
+      ),
       GoRoute(path: '/team', builder: (_, _) => const TeamChatScreen()),
       GoRoute(
         path: '/team/:id',
@@ -76,6 +81,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       StatefulShellRoute.indexedStack(
         builder: (_, _, shell) => ShellScreen(shell: shell),
+        // Four named tabs. Chat and the command centre left the bar on
+        // purpose: the composer sits above it on every screen and is how you
+        // reach MILA, so a separate Chat tab was a second door to the same
+        // room. Both are still routes, pushed from the composer and from More.
         branches: [
           StatefulShellBranch(
             routes: [
@@ -84,20 +93,17 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           StatefulShellBranch(
             routes: [
-              GoRoute(
-                path: '/command',
-                builder: (_, _) => const CommandCenterScreen(),
-              ),
-            ],
-          ),
-          StatefulShellBranch(
-            routes: [
-              GoRoute(path: '/chat', builder: (_, _) => const ChatScreen()),
-            ],
-          ),
-          StatefulShellBranch(
-            routes: [
               GoRoute(path: '/tasks', builder: (_, _) => const TasksScreen()),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(path: '/day', builder: (_, _) => const DayPlanScreen()),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(path: '/more', builder: (_, _) => const MoreScreen()),
             ],
           ),
         ],
