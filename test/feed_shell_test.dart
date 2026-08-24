@@ -238,6 +238,35 @@ void main() {
       expect(parsed.items.single.title, 'Реальная строка');
     });
 
+    test('the confirmation token survives the wire', () {
+      // The widget tests build the model directly, so none of them would
+      // notice this field being dropped in parsing — and a row with no token
+      // renders as an ordinary line, silently un-answerable.
+      final parsed = NeedsYou.fromJson(const {
+        'items': [
+          {
+            'id': 'cnf_1', 'kind': 'confirmation',
+            'title': 'Отменить встречу', 'detail': 'cancel_calendar_event',
+            'route': 'personal', 'confirmationToken': 'tok_abc',
+          },
+        ],
+      });
+      expect(parsed.items.single.confirmationToken, 'tok_abc');
+      expect(parsed.items.single.isConfirmation, isTrue);
+    });
+
+    test('a confirmation outranks everything else in the queue', () {
+      const confirmation = NeedsYouItem(
+        id: '1', kind: 'confirmation', title: 'a', detail: '', route: '',
+        confirmationToken: 't',
+      );
+      const overdue = NeedsYouItem(
+        id: '2', kind: 'overdue', title: 'b', detail: '', route: '',
+      );
+      // It is not late, it is stopped — and it stops for good in five minutes.
+      expect(confirmation.severity, lessThan(overdue.severity));
+    });
+
     test('total comes from the server when it says so', () {
       // The queue is capped for display; the count must still be the truth.
       final parsed = NeedsYou.fromJson(const {
@@ -332,6 +361,54 @@ void main() {
         final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
         File('build/screen_feed.png').writeAsBytesSync(bytes!.buffer.asUint8List());
       });
+    });
+
+    testWidgets('an action MILA is holding is answerable from the row itself', (tester) async {
+      // The gate always refused to run an unconfirmed write. What it could not
+      // do is be answered anywhere but by continuing the same conversation.
+      await pumpFeed(tester, const FeedState(
+        connected: true,
+        needsYou: NeedsYou(total: 1, items: [
+          NeedsYouItem(
+            id: 'cnf_1', kind: 'confirmation',
+            title: 'Отменить встречу с Ортиковым, 15:00',
+            detail: 'cancel_calendar_event', route: 'personal',
+            confirmationToken: 'tok_abc',
+          ),
+        ]),
+      ), GlobalKey());
+
+      expect(find.text('Отменить встречу с Ортиковым, 15:00'), findsOneWidget);
+      expect(find.text('Подтвердить'), findsOneWidget);
+      expect(find.text('Отклонить'), findsOneWidget);
+    });
+
+    testWidgets('an ordinary row gets no buttons', (tester) async {
+      // Only a staged action is a question. An overdue task is not something
+      // to approve, and offering to would teach the buttons to be ignored.
+      await pumpFeed(tester, const FeedState(
+        connected: true,
+        needsYou: NeedsYou(total: 1, items: [
+          NeedsYouItem(id: '1', kind: 'overdue', title: 'Партия 214',
+            detail: '', route: ''),
+        ]),
+      ), GlobalKey());
+      expect(find.text('Партия 214'), findsOneWidget);
+      expect(find.text('Подтвердить'), findsNothing);
+    });
+
+    testWidgets('a confirmation row without a token is not answerable', (tester) async {
+      // Defensive: a server that stopped sending the token would otherwise
+      // render two buttons that answer nothing.
+      await pumpFeed(tester, const FeedState(
+        connected: true,
+        needsYou: NeedsYou(total: 1, items: [
+          NeedsYouItem(id: 'cnf_2', kind: 'confirmation', title: 'Что-то',
+            detail: '', route: '', confirmationToken: ''),
+        ]),
+      ), GlobalKey());
+      expect(find.text('Что-то'), findsOneWidget);
+      expect(find.text('Подтвердить'), findsNothing);
     });
 
     testWidgets('an empty queue says so instead of showing a bare header', (tester) async {

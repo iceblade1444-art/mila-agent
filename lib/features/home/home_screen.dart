@@ -227,6 +227,7 @@ class _Grouped extends StatelessWidget {
 /// the eight percent of men who cannot separate these two hues, and this is a
 /// factory floor, not a design portfolio.
 ({IconData icon, Color colour}) _severityMark(String kind) => switch (kind) {
+  'confirmation' => (icon: Icons.pan_tool_outlined, colour: MilaColors.violet),
   'blocked' => (icon: Icons.block_rounded, colour: MilaColors.danger),
   'waiting' => (icon: Icons.help_outline_rounded, colour: MilaColors.warning),
   'overdue' => (icon: Icons.schedule_rounded, colour: MilaColors.warning),
@@ -331,21 +332,154 @@ class _Row extends StatelessWidget {
   }
 }
 
-class _NeedsYouRow extends StatelessWidget {
+class _NeedsYouRow extends ConsumerStatefulWidget {
   const _NeedsYouRow({required this.item});
 
   final NeedsYouItem item;
 
   @override
+  ConsumerState<_NeedsYouRow> createState() => _NeedsYouRowState();
+}
+
+class _NeedsYouRowState extends ConsumerState<_NeedsYouRow> {
+  bool _busy = false;
+
+  Future<void> _answer(bool approve) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final l10n = context.l10n;
+    try {
+      await ref
+          .read(feedProvider.notifier)
+          .answer(widget.item.confirmationToken, approve: approve);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      // Said out loud. A confirmation that failed quietly is indistinguishable
+      // from one that succeeded, and they are opposite outcomes.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: MilaColors.dangerFill,
+          content: Text(
+            l10n.pick(
+              ru: 'Не удалось ответить. Действие осталось в очереди.',
+              en: 'Could not answer. The action is still waiting.',
+              uz: 'Javob berilmadi. Amal navbatda qoldi.',
+            ),
+          ),
+        ),
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final item = widget.item;
+    final l10n = context.l10n;
     final mark = _severityMark(item.kind);
-    return _Row(
+    final row = _Row(
       icon: mark.icon,
       iconColour: mark.colour,
       title: item.title,
       detail: item.detail,
-      // A route the server chose, opened only if it is one this app has.
-      onTap: item.route.startsWith('/') ? () => context.push(item.route) : null,
+      // A route the server chose, opened only if it is one this app has. A
+      // confirmation is answered here, so it is not also a link away.
+      onTap: item.isConfirmation || !item.route.startsWith('/')
+          ? null
+          : () => context.push(item.route),
+    );
+    if (!item.isConfirmation) return row;
+
+    // Two buttons, and the destructive one is not the easy one. Both are
+    // spelled out: "Yes" and "No" beside a sentence is how people approve
+    // things they did not read.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        row,
+        Padding(
+          padding: const EdgeInsets.fromLTRB(13, 0, 13, 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: _GateButton(
+                  label: l10n.pick(ru: 'Отклонить', en: 'Decline', uz: 'Rad etish'),
+                  primary: false,
+                  busy: _busy,
+                  onPressed: () => _answer(false),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _GateButton(
+                  label: l10n.pick(ru: 'Подтвердить', en: 'Confirm', uz: 'Tasdiqlash'),
+                  primary: true,
+                  busy: _busy,
+                  onPressed: () => _answer(true),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _GateButton extends StatelessWidget {
+  const _GateButton({
+    required this.label,
+    required this.primary,
+    required this.busy,
+    required this.onPressed,
+  });
+
+  final String label;
+  final bool primary;
+  final bool busy;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      enabled: !busy,
+      label: label,
+      child: Material(
+        color: primary ? MilaColors.violetFill : Colors.transparent,
+        borderRadius: BorderRadius.circular(11),
+        child: InkWell(
+          onTap: busy ? null : onPressed,
+          borderRadius: BorderRadius.circular(11),
+          child: Container(
+            height: 40,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(11),
+              border: Border.all(
+                color: primary ? MilaColors.violetFill : MilaColors.cardBorder,
+              ),
+            ),
+            child: busy
+                ? const SizedBox(
+                    width: 15,
+                    height: 15,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: MilaColors.textSecondary,
+                    ),
+                  )
+                : Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                      color: primary ? Colors.white : MilaColors.textSecondary,
+                    ),
+                  ),
+          ),
+        ),
+      ),
     );
   }
 }

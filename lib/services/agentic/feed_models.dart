@@ -18,6 +18,7 @@ class NeedsYouItem {
     required this.title,
     required this.detail,
     required this.route,
+    this.confirmationToken = '',
   });
 
   final String id;
@@ -30,18 +31,26 @@ class NeedsYouItem {
   final String detail;
   final String route;
 
+  /// Present only on rows MILA is holding until this person answers. Its
+  /// presence is what turns a row into a question with two buttons.
+  final String confirmationToken;
+
+  bool get isConfirmation => kind == 'confirmation' && confirmationToken.isNotEmpty;
+
   factory NeedsYouItem.fromJson(Map<String, dynamic> json) => NeedsYouItem(
     id: _s(json['id']),
     kind: _s(json['kind']),
     title: _s(json['title']),
     detail: _s(json['detail'] ?? json['summary']),
     route: _s(json['route'] ?? json['href']),
+    confirmationToken: _s(json['confirmationToken']),
   );
 
   /// Severity rank for anything the phone needs to order or colour itself.
   /// Unknown kinds sort last rather than first — a row nobody recognises must
   /// not claim the top of a queue.
   int get severity => switch (kind) {
+    'confirmation' => 0,
     'blocked' => 0,
     'waiting' => 1,
     'overdue' => 2,

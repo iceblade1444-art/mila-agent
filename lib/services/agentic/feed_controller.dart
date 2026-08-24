@@ -119,6 +119,31 @@ class FeedController extends StateNotifier<FeedState> {
     );
   }
 
+  /// Approve or decline one of the actions MILA is holding.
+  ///
+  /// The row leaves the queue immediately rather than after the next poll: a
+  /// button that appears to do nothing for a minute gets pressed twice, and
+  /// the second press would answer a token that no longer exists.
+  Future<void> answer(String token, {required bool approve}) async {
+    final service = _ref.read(agenticOsServiceProvider);
+    final before = state.needsYou;
+    state = state.copyWith(
+      needsYou: NeedsYou(
+        items: before.items.where((i) => i.confirmationToken != token).toList(),
+        total: before.total > 0 ? before.total - 1 : 0,
+      ),
+    );
+    try {
+      await service.confirmAction(token, approve: approve);
+    } catch (_) {
+      // Put it back. A confirmation that silently vanished without running is
+      // the worst outcome of the three.
+      if (mounted) state = state.copyWith(needsYou: before);
+      rethrow;
+    }
+    await refresh(silent: true);
+  }
+
   static String _message(Object error) =>
       error is AgenticOsException ? error.message : 'Не удалось загрузить';
 

@@ -97,6 +97,21 @@ class AgenticOsService {
     final json = await _request('GET', '/api/member/dashboard', client: client);
     return AgenticDashboard.fromJson(json);
   }
+  /// Answer something MILA is holding. Only the token travels — the arguments
+  /// are the ones that were staged, so what runs is what the person read.
+  Future<void> confirmAction(
+    String token, {
+    required bool approve,
+    http.Client? client,
+  }) async {
+    await _request(
+      'POST',
+      '/api/mila/confirm',
+      body: {'token': token, 'decision': approve ? 'approve' : 'decline'},
+      client: client,
+    );
+  }
+
   /// What is blocked on this person, worst first. Server-scoped by role: a
   /// Member never has the fleet sources fetched for them at all.
   Future<NeedsYou> needsYou({http.Client? client}) async {
