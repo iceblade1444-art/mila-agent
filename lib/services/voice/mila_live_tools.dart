@@ -32,6 +32,11 @@ const List<String> milaPersonalToolNames = [
   'list_my_reminders',
   'cancel_reminder',
   'list_my_calendar',
+  // The product catalogue: a read that reaches nobody, unlike the ERP writes
+  // this list deliberately keeps out.
+  'get_models_overview',
+  'find_models',
+  'get_model_details',
   // Company knowledge is read-only from a phone: looking up a price or who to
   // ask is the point; rewriting the company's own pages is not.
   'search_company_knowledge',
@@ -65,6 +70,49 @@ const List<Map<String, dynamic>> milaLiveFunctionDeclarations = [
         },
       },
       'required': ['title'],
+    },
+  },
+  // The model catalogue. Read-only and single-step, which is the bar this list
+  // sets — it reaches nobody and needs no confirmation. ERP *writes* stay out
+  // for the reason above; a lookup is not a write.
+  //
+  // Without these the phone could only read the ERP snapshot pasted into the
+  // prompt, which carries warehouse stock and near orders and nothing else. So
+  // asked about a real model it answered, correctly from where it was standing,
+  // that it could not find it in the warehouse or in the orders — and then had
+  // nowhere else to look.
+  {
+    'name': 'get_models_overview',
+    'description':
+        'How many garment models the factory has on file and in what state. The product catalogue behind the ERP models page. Use for «сколько у нас моделей», «сколько артикулов». Not warehouse stock and not production output.',
+    'parameters': {'type': 'OBJECT', 'properties': {}},
+  },
+  {
+    'name': 'find_models',
+    'description':
+        'Find garment models by code, name or product type. Use for «есть ли у нас туники», «найди модель KJ13034», «какие халаты мы шьём». Always use this before saying a model does not exist — the ERP snapshot in this prompt covers only the warehouse and near orders, never the catalogue.',
+    'parameters': {
+      'type': 'OBJECT',
+      'properties': {
+        'query': {
+          'type': 'STRING',
+          'description': 'Part of a code, name or type, e.g. «туника» or «KJ13034»',
+        },
+        'status': {'type': 'STRING', 'description': 'approved or draft'},
+        'limit': {'type': 'INTEGER', 'description': 'How many to list, keep it small when speaking'},
+      },
+    },
+  },
+  {
+    'name': 'get_model_details',
+    'description':
+        'Everything on file for one garment model: sizes, colours, fibre composition and the materials it consumes per piece. Name it by code, e.g. KJ13034. If the exact code is not found, fall back to find_models with part of it — codes often carry a suffix like -V-5871.',
+    'parameters': {
+      'type': 'OBJECT',
+      'properties': {
+        'code': {'type': 'STRING', 'description': 'Model code as it appears in the ERP'},
+        'modelId': {'type': 'INTEGER', 'description': 'Numeric id, when the code is unknown'},
+      },
     },
   },
   {

@@ -601,6 +601,7 @@ Live ERP context could not be loaded from MILA server (${response.statusCode}). 
 MOBILE ERP CONTEXT
 Use this authoritative live ERP context for Milana business questions. If a requested fact is missing, say that it is not available right now. Never invent ERP facts.
 Critical rule: готовые изделия / finished goods stock must come only from /warehouse-stock and /warehouse-map through finishedGoods / erp_finished_goods_stock. Do not answer finished-goods questions from production output, material inventory, GM summary, memory, or guesses.
+Critical rule: this context covers the warehouse and near orders only — it does NOT contain the model catalogue. For any question about a model, an article code or what the factory makes, call find_models or get_model_details. Never say a model does not exist because it is absent from this context; it was never in it.
 $context''';
     } catch (_) {
       return '''
