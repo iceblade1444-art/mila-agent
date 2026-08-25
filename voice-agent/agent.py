@@ -247,6 +247,9 @@ ERP_CONTEXT_LIMIT = 12000
 SERVED_PROMPT_TOOLS = [
     "get_finished_goods_stock",
     "get_erp_business_context",
+    "get_models_overview",
+    "find_models",
+    "get_model_details",
     "get_system_status",
     "list_kanban_tasks",
     "create_kanban_task",
@@ -732,6 +735,39 @@ class MilaAgent(MilaConversationAgent):
     async def get_system_status(self) -> str:
         """Read current Hermes, Kanban, Obsidian, and Claude status."""
         return await agentic_os_action("get_system_status", {})
+
+    # The model catalogue. ~6,600 garment models, so the two searching tools
+    # answer with a bounded list plus the honest counts, and the caller is told
+    # when what it is holding is not the whole answer.
+    @function_tool
+    async def get_models_overview(self) -> str:
+        """How many garment models the factory has on file and in what state. The product catalogue behind the ERP models page — not warehouse stock and not production output."""
+        return await agentic_os_action("get_models_overview", {})
+
+    @function_tool
+    async def find_models(self, query: str = "", status: str = "", limit: int = 10) -> str:
+        """Find garment models by code, name or product type. Use for «есть ли у нас туники», «найди модель TJ2211», «какие халаты мы шьём»."""
+        # Ten, not twenty-five: this is read aloud. A voice answer listing
+        # twenty-five model codes is not an answer anyone can use.
+        return await agentic_os_action(
+            "find_models",
+            {
+                "query": query,
+                "status": status,
+                "limit": max(1, min(int(limit or 10), 25)),
+            },
+        )
+
+    @function_tool
+    async def get_model_details(self, code: str = "", model_id: int = 0) -> str:
+        """Everything on file for one garment model: sizes, colours, fibre composition and the materials it consumes per piece. Name it by code, e.g. TJ2211."""
+        args: dict = {}
+        if code:
+            args["code"] = code
+        if model_id:
+            args["modelId"] = int(model_id)
+        return await agentic_os_action("get_model_details", args)
+
 
     @function_tool
     async def list_kanban_tasks(
