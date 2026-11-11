@@ -9,10 +9,13 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-// Release signing: create android/key.properties (see README) to sign with
-// your own keystore; falls back to debug keys so local builds keep working.
+// Release signing: production builds must use the long-lived MILA key so an
+// installed app can update in place. Debug tasks remain available locally.
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
+val releaseRequested = gradle.startParameter.taskNames.any {
+    it.contains("release", ignoreCase = true)
+}
 if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
@@ -56,6 +59,9 @@ android {
 
     buildTypes {
         release {
+            if (releaseRequested && !keystorePropertiesFile.exists()) {
+                throw GradleException("Release signing is required: android/key.properties is missing")
+            }
             signingConfig = if (keystorePropertiesFile.exists()) {
                 signingConfigs.getByName("release")
             } else {

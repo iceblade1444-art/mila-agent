@@ -7,6 +7,7 @@ class MilaAccountSession {
     required this.token,
     required this.label,
     this.accountToken = '',
+    this.ownerId = '',
     this.ownerName = '',
     this.ownerEmail = '',
     this.ownerRole = 'Member',
@@ -17,6 +18,7 @@ class MilaAccountSession {
 
   /// Agentic OS account token used for personal tasks, notes and profile data.
   final String accountToken;
+  final String ownerId;
   final String label;
   final String ownerName;
   final String ownerEmail;
@@ -115,7 +117,7 @@ class MilaAccountService {
         );
       }
 
-      return _createSession(
+      return await _createSession(
         milaRoot: milaRoot,
         accountToken: accountToken,
         owner: owner,
@@ -157,7 +159,7 @@ class MilaAccountService {
           json['error'] as String? ?? 'Could not verify the MFA code.',
         );
       }
-      return _createSession(
+      return await _createSession(
         milaRoot: milaRoot,
         accountToken: accountToken,
         owner: owner,
@@ -194,6 +196,7 @@ class MilaAccountService {
     return MilaAccountSession(
       token: voiceToken,
       accountToken: accountToken,
+      ownerId: owner['id'] as String? ?? '',
       label: (owner['email'] as String? ?? '').trim().isNotEmpty
           ? owner['email'] as String
           : (owner['name'] as String? ?? 'MILA user'),
@@ -262,6 +265,7 @@ class MilaAccountService {
       return MilaAccountSession(
         token: token,
         accountToken: accountToken,
+        ownerId: owner['id'] as String? ?? '',
         label: label,
         ownerName: owner['name'] as String? ?? '',
         ownerEmail: owner['email'] as String? ?? '',

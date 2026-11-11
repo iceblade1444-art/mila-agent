@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -6,6 +7,51 @@ import 'package:http/testing.dart';
 import 'package:mila/services/auth/mila_account_service.dart';
 
 void main() {
+  for (final useMfa in [false, true]) {
+    test(
+      'owned HTTP client stays open until voice session completes (MFA: $useMfa)',
+      () async {
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        final serving = server.forEach((request) async {
+          await request.drain<void>();
+          request.response.headers.contentType = ContentType.json;
+          if (request.uri.path == '/mila/v1/auth/agentic') {
+            await Future<void>.delayed(const Duration(milliseconds: 30));
+            request.response.write(jsonEncode({'token': 'voice-token'}));
+          } else {
+            request.response.write(
+              jsonEncode({
+                'accessToken': 'account-token',
+                'user': {'id': 'user-test', 'name': 'Test', 'role': 'Member'},
+              }),
+            );
+          }
+          await request.response.close();
+        });
+        try {
+          final baseUrl = 'http://127.0.0.1:${server.port}/mila';
+          const service = MilaAccountService();
+          final session = useMfa
+              ? await service.verifyMfa(
+                  baseUrl: baseUrl,
+                  challenge: 'test',
+                  code: '123456',
+                )
+              : await service.signIn(
+                  baseUrl: baseUrl,
+                  email: 'test@example.test',
+                  password: 'test-password',
+                );
+          expect(session.token, 'voice-token');
+          expect(session.accountToken, 'account-token');
+        } finally {
+          await server.close(force: true);
+          await serving;
+        }
+      },
+    );
+  }
+
   test('signs in once and creates account plus voice sessions', () async {
     final requests = <http.Request>[];
     final client = MockClient((request) async {

@@ -95,6 +95,16 @@ class _ProvidersScreenState extends ConsumerState<ProvidersScreen> {
         await secure.write(SecureStore.agenticOsAccountRole, session.ownerRole);
       }
       if (session.ownerName.isNotEmpty || session.ownerEmail.isNotEmpty) {
+        final accountScope = session.ownerId.trim().isNotEmpty
+            ? session.ownerId
+            : session.ownerEmail;
+        await ref.read(localStoreProvider).setAccountScope(accountScope);
+        ref.invalidate(chatProvider);
+        ref.invalidate(tasksProvider);
+        ref.invalidate(memoriesProvider);
+        ref.invalidate(integrationsProvider);
+        ref.invalidate(soulServiceProvider);
+        ref.invalidate(chatSyncProvider);
         final currentProfile = ref.read(profileProvider);
         ref
             .read(profileProvider.notifier)

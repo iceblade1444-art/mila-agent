@@ -46,6 +46,9 @@ class _MemoryStore implements LocalStore {
   final _strings = <String, String>{};
 
   @override
+  Future<void> setAccountScope(String accountId) async {}
+
+  @override
   List<Map<String, dynamic>> readList(String key) => const [];
   @override
   Map<String, dynamic>? readMap(String key) => _maps[key];

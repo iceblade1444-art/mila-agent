@@ -17,6 +17,9 @@ import 'package:mila/services/storage/stores.dart';
 class _RenderStore implements LocalStore {
   final _maps = <String, Map<String, dynamic>>{};
   final _strings = <String, String>{};
+
+  @override
+  Future<void> setAccountScope(String accountId) async {}
   final _lists = <String, List<Map<String, dynamic>>>{
     'chat': [
       ChatMessage(

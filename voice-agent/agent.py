@@ -245,19 +245,12 @@ ERP_CONTEXT_LIMIT = 12000
 # get_finished_goods_warehouse and get_erp_business_snapshot are this agent's
 # local names for the two ERP reads; the server knows them by these names.
 SERVED_PROMPT_TOOLS = [
+    "get_my_production_intelligence",
     "get_finished_goods_stock",
     "get_erp_business_context",
     "get_models_overview",
     "find_models",
     "get_model_details",
-    "get_system_status",
-    "list_kanban_tasks",
-    "create_kanban_task",
-    "delegate_to_hermes",
-    "search_obsidian_notes",
-    "read_obsidian_note",
-    "write_obsidian_note",
-    "ask_claude_code",
 ]
 
 
@@ -702,34 +695,19 @@ class MilaConversationAgent(Agent):
 
 class MilaAgent(MilaConversationAgent):
     @function_tool
+    async def get_my_production_intelligence(self) -> str:
+        """Read only the signed-in employee's ERP-linked production tasks and metrics."""
+        return await agentic_os_action("get_my_production_intelligence", {})
+
+    @function_tool
     async def get_finished_goods_warehouse(self) -> str:
         """Return the exact current finished-goods warehouse count from /warehouse-stock and /warehouse-map."""
-        snapshot = await asyncio.to_thread(fetch_erp_snapshot_payload)
-        result = finished_goods_payload(snapshot)
-        result["rule"] = (
-            "This is the only valid source for questions about готовые изделия "
-            "на складе / finished goods warehouse. Speak answer_ru when ok=true. "
-            "Never replace it with production output, material inventory, or memory."
-        )
-        return json.dumps(result, ensure_ascii=False)[:65536]
+        return await agentic_os_action("get_finished_goods_stock", {})
 
     @function_tool
     async def get_erp_business_snapshot(self, focus: str = "") -> str:
         """Read live Milana ERP facts: finished goods warehouse, production, flows, stock, finance, tasks, and ETA."""
-        result = await asyncio.to_thread(fetch_erp_snapshot_text)
-        return json.dumps(
-            {
-                "ok": True,
-                "focus": focus,
-                "rule": (
-                    "Use erp_finished_goods_stock for finished goods warehouse. "
-                    "Use erp_active_production or erp_business_control for processes, "
-                    "sewing flow, production stages and ETA. Do not invent facts."
-                ),
-                "snapshot_json": result,
-            },
-            ensure_ascii=False,
-        )[:65536]
+        return await agentic_os_action("get_erp_business_context", {"focus": focus})
 
     @function_tool
     async def get_system_status(self) -> str:
@@ -944,7 +922,7 @@ async def mila_session(ctx: JobContext):
     erp_instructions = compose_erp_instructions(raw_erp_context)
     if erp_instructions:
         session_instructions = f"{session_instructions}\n\n{erp_instructions}"
-    else:
+    elif str(caller.get("role") or "") in {"Creator", "Admin", "CEO"}:
         erp_snapshot = await asyncio.to_thread(fetch_erp_snapshot_payload)
         erp_snapshot_block = compose_fallback_erp_snapshot_text(erp_snapshot)
         session_instructions = (
@@ -955,6 +933,13 @@ async def mila_session(ctx: JobContext):
             "Finished goods warehouse must come from erp_finished_goods_stock, not "
             "production output or material inventory:\n"
             f"{erp_snapshot_block[:ERP_CONTEXT_LIMIT]}"
+        )
+    else:
+        session_instructions = (
+            f"{session_instructions}\n\n"
+            "Personal production data is unavailable for this call. Do not fetch "
+            "or infer company ERP data, finance, another employee's tasks, warehouse "
+            "figures or production totals. Say that the ERP account link must be checked."
         )
 
     model = (
