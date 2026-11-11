@@ -299,8 +299,12 @@ test('Gemini mobile chat answers finished goods stock directly from live ERP con
   const fetchImpl = async (url, request = {}) => {
     calls.push({url, request});
     const pathname = new URL(url).pathname;
-    if (pathname === '/api/erp') {
+    if (pathname === '/api/mila/agent-token') {
       assert.equal(request.headers.Authorization, 'Bearer agentic-secret');
+      return Response.json({token: 'scoped-creator-token'});
+    }
+    if (pathname === '/api/erp') {
+      assert.equal(request.headers.Authorization, 'Bearer scoped-creator-token');
       return Response.json({
         ok: true,
         baseUrl: 'https://erp.milanapremium.uz',
@@ -347,7 +351,9 @@ test('Gemini mobile chat answers finished goods stock directly from live ERP con
       },
     },
     async (baseUrl) => {
-      const {token} = await connectMobile(baseUrl);
+      const {token} = await connectMobile(baseUrl, 'Mobile manager', {
+        id: 'creator', email: 'owner@example.test', name: 'Owner', role: 'Creator',
+      });
       const response = await fetch(`${baseUrl}/v1/gemini/chat`, {
         method: 'POST',
         headers: {
@@ -386,7 +392,11 @@ test('Gemini mobile chat receives live ERP context for non-direct ERP questions'
   const fetchImpl = async (url, request = {}) => {
     calls.push({url, request});
     const pathname = new URL(url).pathname;
+    if (pathname === '/api/mila/agent-token') {
+      return Response.json({token: 'scoped-creator-token'});
+    }
     if (pathname === '/api/erp') {
+      assert.equal(request.headers.Authorization, 'Bearer scoped-creator-token');
       return Response.json({
         ok: true,
         baseUrl: 'https://erp.milanapremium.uz',
@@ -419,7 +429,9 @@ test('Gemini mobile chat receives live ERP context for non-direct ERP questions'
       },
     },
     async (baseUrl) => {
-      const {token} = await connectMobile(baseUrl);
+      const {token} = await connectMobile(baseUrl, 'Mobile manager', {
+        id: 'creator', email: 'owner@example.test', name: 'Owner', role: 'Creator',
+      });
       const response = await fetch(`${baseUrl}/v1/gemini/chat`, {
         method: 'POST',
         headers: {
@@ -443,6 +455,55 @@ test('Gemini mobile chat receives live ERP context for non-direct ERP questions'
   assert.match(systemText, /PJ1118-2922/);
   assert.match(systemText, /warehouse-stock/);
   assert.match(systemText, /Never use production output/);
+});
+
+test('member mobile sessions receive only scoped production data and cannot use MCP or Kanban', async () => {
+  const calls = [];
+  const fetchImpl = async (url, request = {}) => {
+    const pathname = new URL(url).pathname;
+    calls.push(pathname);
+    if (pathname === '/api/mila/agent-token') {
+      assert.equal(request.headers.Authorization, 'Bearer agentic-secret');
+      assert.deepEqual(JSON.parse(request.body), {userId: 'usr_member', channel: 'mobile'});
+      return Response.json({token: 'scoped-member-token'});
+    }
+    if (pathname === '/api/production') {
+      assert.equal(request.headers.Authorization, 'Bearer scoped-member-token');
+      return Response.json({
+        ok: true,
+        access: 'own',
+        scope: {type: 'employee', id: 'usr_member', name: 'Employee'},
+        metrics: {taskCount: 1},
+        tasks: [{id: 'mine', employee_id: 'ERP-17'}],
+      });
+    }
+    return Response.json({error: 'unexpected'}, {status: 500});
+  };
+
+  await withServer({
+    fetchImpl,
+    config: {
+      adminToken: 'admin-secret',
+      agenticOsUrl: 'http://agentic-os.internal:8787',
+      agenticOsToken: 'agentic-secret',
+    },
+  }, async (baseUrl) => {
+    const {token} = await connectMobile(baseUrl, 'Employee phone', {
+      id: 'usr_member', email: 'employee@example.test', name: 'Employee', role: 'Member',
+    });
+    const headers = {Authorization: `Bearer ${token}`};
+    const production = await fetch(`${baseUrl}/v1/erp/context`, {headers});
+    assert.equal(production.status, 200);
+    const body = await production.json();
+    assert.equal(body.access, 'own');
+    assert.deepEqual(body.tasks.map((item) => item.id), ['mine']);
+    assert.equal((await fetch(`${baseUrl}/v1/tools/mcp`, {headers})).status, 403);
+    assert.equal((await fetch(`${baseUrl}/v1/tasks`, {headers})).status, 403);
+  });
+
+  assert.equal(calls.includes('/api/erp'), false);
+  assert.equal(calls.includes('/api/mcp/servers'), false);
+  assert.equal(calls.includes('/api/kanban/board'), false);
 });
 
 test('mobile session synchronizes tasks through the private Agentic OS proxy', async () => {
@@ -921,6 +982,7 @@ test('LiveKit token uses the paired account and a private one-time room', async 
       );
       assert.deepEqual(JSON.parse(claims.roomConfig.metadata), {
         language: 'uz-UZ',
+        owner: { id: 'creator', email: 'creator@example.test', name: 'Creator', role: 'Creator' },
         profile: {
           voiceName: 'Sulafat',
           additionalInstructions: 'Speak warmly.',

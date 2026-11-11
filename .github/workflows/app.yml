@@ -86,7 +86,33 @@ jobs:
       - run: flutter pub get
       - run: dart format lib test
       - run: flutter test
-      - run: flutter build apk --release --dart-define=MILA_BACKEND_URL=https://agent.milanapremium.uz/mila
+      - name: Build the pull request APK
+        if: github.event_name == 'pull_request'
+        run: flutter build apk --debug --dart-define=MILA_BACKEND_URL=https://agent.milanapremium.uz/mila
+      - name: Restore the production signing key
+        if: github.event_name != 'pull_request'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$ANDROID_KEYSTORE_BASE64"
+          test -n "$ANDROID_KEY_ALIAS"
+          test -n "$ANDROID_KEY_PASSWORD"
+          test -n "$ANDROID_STORE_PASSWORD"
+          umask 077
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/mila-release.jks
+          {
+            printf 'storePassword=%s\n' "$ANDROID_STORE_PASSWORD"
+            printf 'keyPassword=%s\n' "$ANDROID_KEY_PASSWORD"
+            printf 'keyAlias=%s\n' "$ANDROID_KEY_ALIAS"
+            printf 'storeFile=mila-release.jks\n'
+          } > android/key.properties
+      - name: Build the signed production APK
+        if: github.event_name != 'pull_request'
+        run: flutter build apk --release --dart-define=MILA_BACKEND_URL=https://agent.milanapremium.uz/mila
 
       # The APK used to be an Actions artifact. On a private repo those consume
       # the paid storage quota: 45 MB per push filled 2.1 GB and every upload

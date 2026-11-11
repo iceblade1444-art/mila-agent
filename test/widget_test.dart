@@ -18,6 +18,9 @@ class _MemoryLocalStore implements LocalStore {
   final _strings = <String, String>{};
 
   @override
+  Future<void> setAccountScope(String accountId) async {}
+
+  @override
   Future<void> delete(String key) async => _maps.remove(key);
 
   @override

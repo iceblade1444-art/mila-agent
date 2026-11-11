@@ -151,6 +151,22 @@ export function createMilaServer(options = {}) {
     };
   }
 
+  const managerRoles = new Set(['Creator', 'Admin', 'CEO']);
+
+  function isManagerSession(session) {
+    return managerRoles.has(ownerFromJson(session?.ownerJson)?.role);
+  }
+
+  function requireManagerSession(req, res) {
+    const session = requireSession(req, res);
+    if (!session) return null;
+    if (!isManagerSession(session)) {
+      sendJson(res, 403, {error: 'Manager access required', code: 'manager_access_required'});
+      return null;
+    }
+    return session;
+  }
+
   function sanitizeMcpTool(server, tool = {}) {
     return {
       serverId: server.id,
@@ -299,6 +315,28 @@ export function createMilaServer(options = {}) {
     return data;
   }
 
+  async function agenticUserRequest(session, pathname, options = {}) {
+    const owner = ownerFromJson(session?.ownerJson);
+    if (!owner?.id) {
+      const error = new Error('The MILA session is not linked to an Agentic OS account');
+      error.status = 403;
+      throw error;
+    }
+    const grant = await agenticRequest('/api/mila/agent-token', {
+      method: 'POST',
+      body: {userId: owner.id, channel: 'mobile'},
+    });
+    if (!grant?.token) {
+      const error = new Error('Could not create a scoped Agentic OS session');
+      error.status = 502;
+      throw error;
+    }
+    return agenticRequest(pathname, {
+      ...options,
+      headers: {...(options.headers || {}), Authorization: `Bearer ${grant.token}`},
+    });
+  }
+
   function erpNumber(value, fallback = 0) {
     const number = Number(value);
     return Number.isFinite(number) ? number : fallback;
@@ -432,19 +470,30 @@ export function createMilaServer(options = {}) {
     ].join('\n').slice(0, 7000);
   }
 
-  async function buildErpVoiceBriefing() {
+  async function buildErpVoiceBriefing(session) {
     if (!cfg.agenticOsUrl || !cfg.agenticOsToken) return null;
     try {
-      const snapshot = await agenticRequest('/api/erp');
-      const summary = summarizeErpSnapshot(snapshot);
+      if (isManagerSession(session)) {
+        const snapshot = await agenticUserRequest(session, '/api/erp');
+        const summary = summarizeErpSnapshot(snapshot);
+        return {...summary, instruction: formatErpVoiceInstruction(summary)};
+      }
+      const summary = await agenticUserRequest(session, '/api/production');
       return {
         ...summary,
-        instruction: formatErpVoiceInstruction(summary),
+        source: 'Agentic OS /api/production',
+        instruction: [
+          summary.access === 'company'
+            ? 'AUTHORITATIVE COMPANY PRODUCTION INTELLIGENCE. This account is a manager and may read the company scope.'
+            : 'AUTHORITATIVE PERSONAL PRODUCTION INTELLIGENCE. This contains only the signed-in employee’s explicitly linked ERP rows.',
+          'Use only fields present below. Never infer responsibility, another employee’s work, company totals, finance or missing values.',
+          JSON.stringify(summary).slice(0, 9000),
+        ].join('\n'),
       };
     } catch (error) {
       return {
         ok: false,
-        source: 'Agentic OS /api/erp',
+        source: 'Agentic OS /api/production',
         fetchedAt: new Date().toISOString(),
         error: error.message || 'ERP context unavailable',
         instruction:
@@ -726,6 +775,10 @@ export function createMilaServer(options = {}) {
       if (req.method === 'GET' && url.pathname === '/v1/agentic/status') {
         const session = requireSession(req, res);
         if (!session) return;
+        if (!isManagerSession(session)) {
+          sendJson(res, 200, {ok: true, connected: true, ...publicSession(session), profiles: [], orchestration: null});
+          return;
+        }
         const [profiles, orchestration] = await Promise.all([
           agenticRequest('/api/kanban/profiles'),
           agenticRequest('/api/kanban/orchestration'),
@@ -743,6 +796,18 @@ export function createMilaServer(options = {}) {
       if (req.method === 'GET' && url.pathname === '/v1/dashboard') {
         const session = requireSession(req, res);
         if (!session) return;
+        if (!isManagerSession(session)) {
+          const production = await agenticUserRequest(session, '/api/production').catch((error) => ({ok: false, error: error.message}));
+          sendJson(res, 200, {
+            ok: true, connected: true, account: publicSession(session),
+            workspace: {name: 'MILA', readiness: 'personal', readinessScore: 0},
+            tasks: [], knowledge: {ready: false, writable: false, notes: 0, folders: 0, mcpStatus: 'restricted'},
+            operations: {available: false, fourC: 'restricted', score: 0},
+            mila: {voiceConfigured: Boolean(cfg.livekitUrl), liveModel: cfg.geminiLiveModel},
+            production, syncedAt: Date.now(),
+          });
+          return;
+        }
         const [board, knowledge, operations, mila] = await Promise.all([
           agenticRequest('/api/kanban/board'),
           agenticRequest('/api/knowledge/status'),
@@ -787,7 +852,7 @@ export function createMilaServer(options = {}) {
       }
 
       if (req.method === 'GET' && url.pathname === '/v1/tools/mcp') {
-        const session = requireSession(req, res);
+        const session = requireManagerSession(req, res);
         if (!session) return;
         const servers = sanitizeMcpServers(await agenticRequest('/api/mcp/servers'));
         sendJson(res, 200, {
@@ -803,7 +868,7 @@ export function createMilaServer(options = {}) {
       if (req.method === 'GET' && url.pathname === '/v1/erp/context') {
         const session = requireSession(req, res);
         if (!session) return;
-        sendJson(res, 200, (await buildErpVoiceBriefing()) || {
+        sendJson(res, 200, (await buildErpVoiceBriefing(session)) || {
           ok: false,
           error: 'Agentic OS ERP context is not configured',
         });
@@ -811,7 +876,7 @@ export function createMilaServer(options = {}) {
       }
 
       if (req.method === 'POST' && url.pathname === '/v1/tools/mcp/call') {
-        const session = requireSession(req, res);
+        const session = requireManagerSession(req, res);
         if (!session) return;
         const body = await readJson(req);
         if (!body.confirmationToken) {
@@ -847,7 +912,7 @@ export function createMilaServer(options = {}) {
       }
 
       if (req.method === 'GET' && url.pathname === '/v1/tasks') {
-        if (!requireSession(req, res)) return;
+        if (!requireManagerSession(req, res)) return;
         const board = await agenticRequest('/api/kanban/board');
         const tasks = (board.columns || []).flatMap((column) =>
           (column.tasks || []).map((task) => ({
@@ -860,7 +925,7 @@ export function createMilaServer(options = {}) {
       }
 
       if (req.method === 'POST' && url.pathname === '/v1/tasks') {
-        const session = requireSession(req, res);
+        const session = requireManagerSession(req, res);
         if (!session) return;
         const body = await readJson(req);
         const title = String(body.title || '').trim().slice(0, 240);
@@ -888,7 +953,7 @@ export function createMilaServer(options = {}) {
 
       const taskMatch = /^\/v1\/tasks\/(t_[a-zA-Z0-9]+)$/.exec(url.pathname);
       if (taskMatch && req.method === 'GET') {
-        if (!requireSession(req, res)) return;
+        if (!requireManagerSession(req, res)) return;
         sendJson(
           res,
           200,
@@ -898,7 +963,7 @@ export function createMilaServer(options = {}) {
       }
 
       if (taskMatch && req.method === 'PATCH') {
-        if (!requireSession(req, res)) return;
+        if (!requireManagerSession(req, res)) return;
         const body = await readJson(req);
         const patch = {};
         if (['ready', 'blocked', 'review', 'done', 'archived'].includes(body.status)) {
@@ -1042,7 +1107,7 @@ export function createMilaServer(options = {}) {
 
         const body = await readJson(req);
         const erpContext = shouldAttachErpContext(body)
-          ? await buildErpVoiceBriefing()
+          ? await buildErpVoiceBriefing(session)
           : null;
         const directErpAnswer = maybeAnswerErpDirectly(body, erpContext);
         if (directErpAnswer) {
@@ -1115,7 +1180,7 @@ export function createMilaServer(options = {}) {
         const body = await readJson(req);
         const language = normalizeLanguage(body.language);
         const profile = normalizeLiveProfile(body.profile);
-        const erp = await buildErpVoiceBriefing();
+        const erp = await buildErpVoiceBriefing(session);
         const owner = ownerFromJson(session.ownerJson);
         const room = `mila-${crypto.randomUUID()}`;
         const identityBase = owner?.id || owner?.email || session.label;

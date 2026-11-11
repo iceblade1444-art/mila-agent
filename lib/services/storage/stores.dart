@@ -9,9 +9,44 @@ import '../../data/models.dart';
 
 /// Single Hive box holding JSON-encoded app data (no codegen needed).
 class LocalStore {
-  LocalStore(this._box);
+  LocalStore(this._box) : _scope = _box.get(_activeScopeKey) ?? _signedOutScope;
 
   final Box<String> _box;
+  String _scope;
+  static const _activeScopeKey = 'active_account_scope';
+  static const _migrationKey = 'account_scope_migrated';
+  static const _signedOutScope = 'signed-out';
+  static const _privateKeys = {
+    'chat',
+    'tasks',
+    'memories',
+    'integrations',
+    'soul.md',
+  };
+
+  String _key(String key) =>
+      _privateKeys.contains(key) ? 'account:$_scope:$key' : key;
+
+  /// Switches every account-owned store before its Riverpod controllers are
+  /// recreated. Existing unscoped data is assigned once to the first account
+  /// that signs in after this migration; later switches never copy it.
+  Future<void> setAccountScope(String accountId) async {
+    final normalized = accountId.trim().toLowerCase().replaceAll(
+      RegExp(r'[^a-z0-9@._-]'),
+      '_',
+    );
+    final next = normalized.isEmpty ? _signedOutScope : normalized;
+    if (_box.get(_migrationKey) != '1' && next != _signedOutScope) {
+      for (final key in _privateKeys) {
+        final legacy = _box.get(key);
+        if (legacy != null) await _box.put('account:$next:$key', legacy);
+      }
+      await _box.deleteAll(_privateKeys);
+      await _box.put(_migrationKey, '1');
+    }
+    _scope = next;
+    await _box.put(_activeScopeKey, next);
+  }
 
   static Future<LocalStore> open() async {
     await Hive.initFlutter();
@@ -20,7 +55,7 @@ class LocalStore {
   }
 
   List<Map<String, dynamic>> readList(String key) {
-    final raw = _box.get(key);
+    final raw = _box.get(_key(key));
     if (raw == null) return [];
     try {
       return (jsonDecode(raw) as List)
@@ -32,7 +67,7 @@ class LocalStore {
   }
 
   Map<String, dynamic>? readMap(String key) {
-    final raw = _box.get(key);
+    final raw = _box.get(_key(key));
     if (raw == null) return null;
     try {
       return (jsonDecode(raw) as Map).cast<String, dynamic>();
@@ -41,14 +76,15 @@ class LocalStore {
     }
   }
 
-  String? readString(String key) => _box.get(key);
+  String? readString(String key) => _box.get(_key(key));
 
-  Future<void> writeString(String key, String value) => _box.put(key, value);
+  Future<void> writeString(String key, String value) =>
+      _box.put(_key(key), value);
 
   Future<void> writeJson(String key, Object value) =>
-      _box.put(key, jsonEncode(value));
+      _box.put(_key(key), jsonEncode(value));
 
-  Future<void> delete(String key) => _box.delete(key);
+  Future<void> delete(String key) => _box.delete(_key(key));
 }
 
 /// API keys live in the platform keystore/keychain, never in plain storage.

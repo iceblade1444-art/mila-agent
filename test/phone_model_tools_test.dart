@@ -1,4 +1,4 @@
-// The catalogue reaching the phone's own tool list.
+// The personal production view reaching the phone's own tool list.
 //
 // Three surfaces got the model tools when they were built — the browser, the
 // server-served channels and the LiveKit agent — and the phone did not, because
@@ -15,10 +15,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mila/services/voice/mila_live_tools.dart';
 
 void main() {
-  const catalogue = ['get_models_overview', 'find_models', 'get_model_details'];
+  const production = ['get_my_production_intelligence'];
 
-  test('the phone can run the catalogue tools', () {
-    for (final name in catalogue) {
+  test('the phone can run the scoped production tool', () {
+    for (final name in production) {
       expect(
         milaPersonalToolNames,
         contains(name),
@@ -27,13 +27,13 @@ void main() {
     }
   });
 
-  test('and is told they exist, which is a separate thing', () {
+  test('and is told it exists, which is a separate thing', () {
     // A name in the forward list with no declaration is a tool the model is
     // never offered; a declaration with no name in the list fails mid-call.
     final declared = milaLiveFunctionDeclarations
         .map((tool) => (tool['name'] ?? '').toString())
         .toSet();
-    for (final name in catalogue) {
+    for (final name in production) {
       expect(declared, contains(name), reason: '$name has no declaration');
     }
   });
@@ -59,22 +59,17 @@ void main() {
     }
   });
 
-  test('find_models takes something to search for', () {
-    final tool = milaLiveFunctionDeclarations.firstWhere((t) => t['name'] == 'find_models');
-    final params = tool['parameters'] as Map<String, dynamic>;
-    final props = params['properties'] as Map<String, dynamic>;
-    expect(props.containsKey('query'), isTrue);
-    // Asked in Russian on a factory floor; the description has to carry the
-    // words people actually say or the model will not reach for it.
-    expect(tool['description'].toString(), contains('туники'));
-  });
-
-  test('get_model_details knows codes carry suffixes', () {
-    // KJ13034 exists and so do KJ13034-V-5871 and KJ13034-V-5867. An exact
-    // lookup on the bare code finds one of them or none, and the model needs to
-    // know to widen rather than conclude the garment does not exist.
-    final tool = milaLiveFunctionDeclarations.firstWhere((t) => t['name'] == 'get_model_details');
-    expect(tool['description'].toString(), contains('find_models'));
-    expect(tool['description'].toString(), contains('-V-'));
+  test('company ERP tools are absent from an employee phone', () {
+    final names = milaLiveFunctionDeclarations
+        .map((tool) => tool['name'])
+        .toSet();
+    for (final name in [
+      'get_models_overview',
+      'find_models',
+      'get_model_details',
+    ]) {
+      expect(names, isNot(contains(name)));
+      expect(milaPersonalToolNames, isNot(contains(name)));
+    }
   });
 }

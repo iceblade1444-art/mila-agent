@@ -156,6 +156,16 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     MilaAccountSession session,
     String baseUrl,
   ) async {
+    final accountScope = session.ownerId.trim().isNotEmpty
+        ? session.ownerId
+        : session.ownerEmail;
+    await ref.read(localStoreProvider).setAccountScope(accountScope);
+    ref.invalidate(chatProvider);
+    ref.invalidate(tasksProvider);
+    ref.invalidate(memoriesProvider);
+    ref.invalidate(integrationsProvider);
+    ref.invalidate(soulServiceProvider);
+    ref.invalidate(chatSyncProvider);
     final secure = ref.read(secureStoreProvider);
     await secure.write(SecureStore.milaBackendUrl, baseUrl);
     await secure.write(SecureStore.agenticOsAccessToken, session.accountToken);
